@@ -39,14 +39,8 @@
                 "python.analysis.typeCheckingMode": "basic",
                 "python.analysis.autoImportCompletions": true,
                 "python.analysis.diagnosticMode": "workspace",
-                "python.analysis.diagnosticSeverityOverrides": {
-                    "reportUnusedImport": "none",
-                    "reportUnusedVariable": "none",
-                    "reportUnusedCoroutine": "none",
-                    "reportMissingTypeStubs": "none"
-                },
                 "python.analysis.include": [
-                    "custom_components/integration_blueprint"
+                    "custom_components/telegram_bot_conversation"
                 ],
                 "python.analysis.exclude": [
                     "**/.venv/**",
@@ -59,7 +53,7 @@
                 ],
                 "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
                 "python.analysis.extraPaths": [
-                    "${workspaceFolder}/.venv/lib/python3.14/site-packages"
+                    "${workspaceFolder}/.venv/lib/python*/site-packages"
                 ],
                 "[python]": {
                     "editor.defaultFormatter": "charliermarsh.ruff"
