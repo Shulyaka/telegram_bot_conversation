@@ -17,7 +17,13 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 echo "==> Installing dependencies..."
-uv pip install --requirement requirements.txt
+if [ -z "$VIRTUAL_ENV" ]; then
+  echo "No virtual environment detected, installing globally..."
+  uv pip install --system --requirement requirements.txt
+else
+  echo "Virtual environment detected: $VIRTUAL_ENV"
+  uv pip install --requirement requirements.txt
+fi
 
 echo "==> Installing pre-commit hooks..."
 pre-commit install
