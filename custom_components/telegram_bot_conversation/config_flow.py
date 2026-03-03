@@ -6,16 +6,12 @@ from collections.abc import Iterable
 from typing import Any
 
 import voluptuous as vol
+
 from homeassistant.components.telegram_bot.const import (
     DOMAIN as TELEGRAM_DOMAIN,
-)
-from homeassistant.components.telegram_bot.const import (
     SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
 )
-from homeassistant.config_entries import (
-    ConfigSubentryData,
-    ConfigSubentryFlow,
-)
+from homeassistant.config_entries import ConfigSubentryData, ConfigSubentryFlow
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
@@ -125,7 +121,7 @@ class TelegramBotConversationFlow(
 
     async def get_subentry_schema(self, subentry_type: str) -> vol.Schema:
         """Get subentry schema."""
-        known_telegram_subentries = set(
+        known_telegram_subentries = {
             subentry.data.get(CONF_TELEGRAM_SUBENTRY)
             for subentry in self._get_entry().subentries.values()
             if subentry.data.get(CONF_TELEGRAM_SUBENTRY)
@@ -133,7 +129,7 @@ class TelegramBotConversationFlow(
                 self.source == "user"
                 or subentry.subentry_id != self._get_reconfigure_subentry().subentry_id
             )
-        )
+        }
         if (telegram_entry_id := self.data.get(CONF_TELEGRAM_ENTRY)) and (
             telegram_entry := self.hass.config_entries.async_get_entry(
                 telegram_entry_id

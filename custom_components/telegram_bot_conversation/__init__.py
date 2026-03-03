@@ -1,5 +1,4 @@
-"""
-Custom integration to integrate telegram_bot_conversation with Home Assistant.
+"""Custom integration to integrate telegram_bot_conversation with Home Assistant.
 
 This integration ties up the Home Assistant conversation
 integration with the telegram_bot integration.
@@ -18,6 +17,8 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
+
+from telegramify_markdown import markdownify
 
 from homeassistant.components.conversation import (
     DATA_COMPONENT,
@@ -45,6 +46,7 @@ from homeassistant.components.telegram_bot.const import (
     CHAT_ACTION_TYPING,
     CONF_CHAT_ID,
     CONF_CONFIG_ENTRY_ID,
+    DOMAIN as TELEGRAM_DOMAIN,
     EVENT_TELEGRAM_ATTACHMENT,
     EVENT_TELEGRAM_CALLBACK,
     EVENT_TELEGRAM_COMMAND,
@@ -55,9 +57,6 @@ from homeassistant.components.telegram_bot.const import (
     SERVICE_SEND_MESSAGE,
     SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
 )
-from homeassistant.components.telegram_bot.const import (
-    DOMAIN as TELEGRAM_DOMAIN,
-)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Context, Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
@@ -67,7 +66,6 @@ from homeassistant.helpers.chat_session import (
 )
 from homeassistant.helpers.intent import IntentResponseType
 from homeassistant.util import dt as dt_util
-from telegramify_markdown import markdownify
 
 from .const import (
     CONF_CONVERSATION_AGENT,
@@ -560,7 +558,7 @@ class TelegramBotConversationHandler:
                 event.data.get("args", []),
                 context,
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LOGGER.exception("Failed to process command: %s", e, stack_info=True)
 
     @callback
@@ -603,7 +601,7 @@ class TelegramBotConversationHandler:
                 context=context,
             )
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LOGGER.exception("Failed to process command: %s", e, stack_info=True)
 
     @callback

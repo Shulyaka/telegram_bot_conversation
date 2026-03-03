@@ -7,6 +7,7 @@ from functools import partial
 from typing import Any
 
 import voluptuous as vol
+
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigEntryState,
@@ -171,7 +172,7 @@ class RecursiveDataFlow(RecursiveBaseFlow):
                 if not errors:
                     for name in list(self.current_step_data.keys()):
                         if name not in user_input:
-                            for key in self.current_step_schema.schema.keys():
+                            for key in self.current_step_schema.schema:
                                 if key == name and isinstance(key, vol.Optional):
                                     self.current_step_data.pop(name)
                                     break
