@@ -1,11 +1,11 @@
-#!/usr/bin/env bash
-# Setups venv and dependencies
+#!/bin/sh
+# script/setup: Set up project for first-time use after cloning
 
-# Stop on errors
 set -e
 
 cd "$(dirname "$0")/.."
 
+echo "==> Setting up virtual environment..."
 if [ ! -n "$VIRTUAL_ENV" ]; then
   if [ -x "$(command -v uv)" ]; then
     uv venv .venv
@@ -21,3 +21,4 @@ fi
 
 scripts/bootstrap
 
+echo "==> Project is now ready to go!"
