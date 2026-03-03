@@ -1,12 +1,20 @@
 {
   "domain": "telegram_bot_conversation",
-  "name": "Telegram Bot Conversation",
+  "name": "Telegram Bot <> Conversation",
   "codeowners": [
     "@Shulyaka"
   ],
   "config_flow": true,
+  "dependencies": [
+    "conversation",
+    "telegram_bot"
+  ],
   "documentation": "https://github.com/Shulyaka/telegram_bot_conversation",
-  "iot_class": "cloud_polling",
+  "integration_type": "service",
+  "iot_class": "local_push",
   "issue_tracker": "https://github.com/Shulyaka/telegram_bot_conversation/issues",
-  "version": "0.1.0"
+  "requirements": [
+    "telegramify_markdown==0.5.4"
+  ],
+  "version": "0.1.1"
 }

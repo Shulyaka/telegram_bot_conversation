@@ -1,21 +1,65 @@
 {
     "config": {
+        "abort": {
+            "already_configured": "All Telegram chats are already configured",
+            "no_telegram_bot_entries": "No Telegram Bot entries found. Please set up a Telegram Bot configuration before configuring this integration."
+        },
         "step": {
             "user": {
-                "description": "If you need help with the configuration have a look at the documentation.",
                 "data": {
-                    "username": "Username",
-                    "password": "Password"
+                    "telegram_entry": "Telegram Bot config entry"
+                },
+                "data_description": {
+                    "telegram_entry": "Select the Telegram Bot configuration to link with this integration."
+                },
+                "description": "Connect to Telegram Bot integration."
+            }
+        }
+    },
+    "config_subentries": {
+        "telegram_id": {
+            "abort": {
+                "entry_not_loaded": "Cannot add things while the configuration is disabled.",
+                "reconfigure_successful": "Reconfigured successfully",
+                "all_telegram_entries_configured": "All Telegram Bot entries are already configured. Please reconfigure an existing entry or add a new subentry to the telegram bot integration."
+            },
+            "entry_type": "Telegram Chat",
+            "error": {
+                "telegram_subentry_already_configured": "This chat is already configured for another subentry. Please select a different Telegram Bot or reconfigure the existing subentry."
+            },
+            "initiate_flow": {
+                "reconfigure": "Reconfigure this telegram chat",
+                "user": "Add telegram chat"
+            },
+            "step": {
+                "init": {
+                    "data": {
+                        "conversation_agent": "Conversation agent.",
+                        "telegram_subentry": "Telegram chat",
+                        "user_id": "Home Assistant user"
+                    },
+                    "data_description": {
+                        "conversation_agent": "Conversation agent to use for this chat.",
+                        "telegram_subentry": "Telegram subentry to link with this integration.",
+                        "user_id": "Select a Home Assistant user to link with this Telegram chat."
+                    },
+                    "description": "Create a subentry for each Telegram chat you want to connect.",
+                    "title": "Telegram Chat Configuration"
                 }
             }
-        },
-        "error": {
-            "auth": "Username/Password is wrong.",
-            "connection": "Unable to connect to the server.",
-            "unknown": "Unknown error occurred."
-        },
-        "abort": {
-            "already_configured": "This entry is already configured."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "conversation_timeout": "Conversation timeout"
+                },
+                "data_description": {
+                    "conversation_timeout": "Overwrite default conversation timeout for context management. The bot will ignore message history if the chat is interrupted for longer than this time."
+                },
+                "description": "Configure options for Telegram Bot conversation."
+            }
         }
     }
 }
