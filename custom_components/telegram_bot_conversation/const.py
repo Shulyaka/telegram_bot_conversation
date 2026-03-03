@@ -5,4 +5,11 @@ from logging import Logger, getLogger
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "telegram_bot_conversation"
-ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
+
+CONF_CONVERSATION_TIMEOUT = "conversation_timeout"
+CONF_CONVERSATION_AGENT = "conversation_agent"
+CONF_TELEGRAM_ENTRY = "telegram_entry"
+CONF_TELEGRAM_SUBENTRY = "telegram_subentry"
+CONF_USER = "user_id"
+
+TELEGRAM_CONVERSATION_TIMEOUT = timedelta(hours=24)

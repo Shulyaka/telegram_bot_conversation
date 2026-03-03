@@ -1,89 +1,217 @@
-"""Adds config flow for Telegram Bot Conversation."""
+"""Config flow for Telegram Bot Conversation custom integration."""
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from typing import Any
+
 import voluptuous as vol
-from homeassistant import config_entries
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.helpers import selector
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from slugify import slugify
-
-from .api import (
-    TelegramBotConversationApiClient,
-    TelegramBotConversationApiClientAuthenticationError,
-    TelegramBotConversationApiClientCommunicationError,
-    TelegramBotConversationApiClientError,
+from homeassistant.components.telegram_bot.const import (
+    DOMAIN as TELEGRAM_DOMAIN,
 )
-from .const import DOMAIN, LOGGER
+from homeassistant.components.telegram_bot.const import (
+    SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
+)
+from homeassistant.config_entries import (
+    ConfigSubentryData,
+    ConfigSubentryFlow,
+)
+from homeassistant.core import callback
+from homeassistant.helpers import selector
+
+from . import TelegramBotConversationConfigEntry
+from .const import (
+    CONF_CONVERSATION_AGENT,
+    CONF_CONVERSATION_TIMEOUT,
+    CONF_TELEGRAM_ENTRY,
+    CONF_TELEGRAM_SUBENTRY,
+    CONF_USER,
+    DOMAIN,
+)
+from .recursive_data_flow import AbortRecursiveFlow, RecursiveConfigFlow
+
+OPTIONS_SCHEMA = vol.Schema(
+    {
+        vol.Required(
+            CONF_CONVERSATION_TIMEOUT, default={"minutes": 30}
+        ): selector.DurationSelector()
+    }
+)
 
 
-class TelegramBotConversationFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
-    """Config flow for Telegram Bot Conversation."""
+class TelegramBotConversationFlow(
+    RecursiveConfigFlow, domain=DOMAIN, options_schema=OPTIONS_SCHEMA
+):
+    """Handle config and options flow for Telegram Bot Conversation."""
 
     VERSION = 1
+    MINOR_VERSION = 1
 
-    async def async_step_user(
-        self,
-        user_input: dict | None = None,
-    ) -> config_entries.ConfigFlowResult:
-        """Handle a flow initialized by the user."""
-        _errors = {}
-        if user_input is not None:
-            try:
-                await self._test_credentials(
-                    username=user_input[CONF_USERNAME],
-                    password=user_input[CONF_PASSWORD],
-                )
-            except TelegramBotConversationApiClientAuthenticationError as exception:
-                LOGGER.warning(exception)
-                _errors["base"] = "auth"
-            except TelegramBotConversationApiClientCommunicationError as exception:
-                LOGGER.error(exception)
-                _errors["base"] = "connection"
-            except TelegramBotConversationApiClientError as exception:
-                LOGGER.exception(exception)
-                _errors["base"] = "unknown"
-            else:
-                await self.async_set_unique_id(
-                    ## Do NOT use this in production code
-                    ## The unique_id should never be something that can change
-                    ## https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
-                    unique_id=slugify(user_input[CONF_USERNAME])
-                )
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=user_input[CONF_USERNAME],
-                    data=user_input,
-                )
+    async def async_validate_input(
+        self, step_id: str, user_input: dict[str, Any]
+    ) -> dict[str, str]:
+        """Validate step data."""
+        if step_id == "user":
+            self._async_abort_entries_match(user_input)
+        elif step_id == "init" and isinstance(self, ConfigSubentryFlow):
+            for subentry in self._get_entry().subentries.values():
+                if subentry.data.get(CONF_TELEGRAM_SUBENTRY) == user_input[
+                    CONF_TELEGRAM_SUBENTRY
+                ] and (
+                    self.source == "user"
+                    or subentry.subentry_id
+                    != self._get_reconfigure_subentry().subentry_id
+                ):
+                    return {
+                        CONF_TELEGRAM_SUBENTRY: "telegram_subentry_already_configured"
+                    }
 
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
+        return {}
+
+    async def get_data_schema(self) -> vol.Schema:
+        """Get data schema."""
+        for telegram_entry in self.hass.config_entries.async_entries(TELEGRAM_DOMAIN):
+            return vol.Schema(
                 {
                     vol.Required(
-                        CONF_USERNAME,
-                        default=(user_input or {}).get(CONF_USERNAME, vol.UNDEFINED),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                        ),
+                        CONF_TELEGRAM_ENTRY, default=telegram_entry.entry_id
+                    ): selector.ConfigEntrySelector(
+                        selector.ConfigEntrySelectorConfig(
+                            integration=TELEGRAM_DOMAIN,
+                        )
                     ),
-                    vol.Required(CONF_PASSWORD): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.PASSWORD,
-                        ),
+                }
+            )
+        raise AbortRecursiveFlow("no_telegram_bot_entries")
+
+    @property
+    def title(self) -> str:
+        """Return config flow title."""
+        if (telegram_entry_id := self.data.get(CONF_TELEGRAM_ENTRY)) and (
+            telegram_entry := self.hass.config_entries.async_get_entry(
+                telegram_entry_id
+            )
+        ):
+            return telegram_entry.title
+
+        return super().title
+
+    @property
+    def subentry_title(self) -> str:
+        """Return config subentry flow title."""
+        if (
+            (telegram_entry_id := self.data.get(CONF_TELEGRAM_ENTRY))
+            and (
+                telegram_entry := self.hass.config_entries.async_get_entry(
+                    telegram_entry_id
+                )
+            )
+            and (telegram_subentry_id := self.options.get(CONF_TELEGRAM_SUBENTRY))
+            and (
+                telegram_subentry := telegram_entry.subentries.get(telegram_subentry_id)
+            )
+        ):
+            return telegram_subentry.title
+
+        return super().title
+
+    @classmethod
+    @callback
+    def get_subentries(
+        cls, config_entry: TelegramBotConversationConfigEntry
+    ) -> Iterable[str]:
+        """Get subentries list."""
+        return ["telegram_id"]
+
+    async def get_subentry_schema(self, subentry_type: str) -> vol.Schema:
+        """Get subentry schema."""
+        known_telegram_subentries = set(
+            subentry.data.get(CONF_TELEGRAM_SUBENTRY)
+            for subentry in self._get_entry().subentries.values()
+            if subentry.data.get(CONF_TELEGRAM_SUBENTRY)
+            and (
+                self.source == "user"
+                or subentry.subentry_id != self._get_reconfigure_subentry().subentry_id
+            )
+        )
+        if (telegram_entry_id := self.data.get(CONF_TELEGRAM_ENTRY)) and (
+            telegram_entry := self.hass.config_entries.async_get_entry(
+                telegram_entry_id
+            )
+        ):
+            telegram_subentry_options = [
+                selector.SelectOptionDict(
+                    value=telegram_subentry_id, label=telegram_subentry.title
+                )
+                for telegram_subentry_id, telegram_subentry in telegram_entry.subentries.items()
+                if telegram_subentry.subentry_type == SUBENTRY_TYPE_ALLOWED_CHAT_IDS
+                and telegram_subentry_id not in known_telegram_subentries
+            ]
+        else:
+            telegram_subentry_options = []
+
+        if not telegram_subentry_options:
+            raise AbortRecursiveFlow("all_telegram_entries_configured")
+
+        user_options = [
+            selector.SelectOptionDict(value=user.id, label=user.name)
+            for user in await self.hass.auth.async_get_users()
+            if not user.system_generated
+        ]
+
+        return vol.Schema(
+            {
+                vol.Required(CONF_TELEGRAM_SUBENTRY): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=telegram_subentry_options,
+                        translation_key=CONF_TELEGRAM_SUBENTRY,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
                     ),
-                },
-            ),
-            errors=_errors,
+                ),
+                vol.Optional(
+                    CONF_USER,
+                    default=await self._get_user_id(
+                        telegram_subentry_options[0]["label"]
+                    )
+                    or vol.UNDEFINED,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=user_options,
+                        translation_key=CONF_USER,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
+                vol.Optional(
+                    CONF_CONVERSATION_AGENT
+                ): selector.ConversationAgentSelector(),
+            }
         )
 
-    async def _test_credentials(self, username: str, password: str) -> None:
-        """Validate credentials."""
-        client = TelegramBotConversationApiClient(
-            username=username,
-            password=password,
-            session=async_create_clientsession(self.hass),
-        )
-        await client.async_get_data()
+    async def get_default_subentries(self) -> Iterable[ConfigSubentryData] | None:
+        """Get default subentries."""
+        if (telegram_entry_id := self.data.get(CONF_TELEGRAM_ENTRY)) and (
+            telegram_entry := self.hass.config_entries.async_get_entry(
+                telegram_entry_id
+            )
+        ):
+            return [
+                {
+                    "subentry_type": "telegram_id",
+                    "data": {
+                        CONF_TELEGRAM_SUBENTRY: telegram_subentry_id,
+                        CONF_USER: await self._get_user_id(telegram_subentry.title),
+                    },
+                    "title": telegram_subentry.title,
+                    "unique_id": None,
+                }
+                for telegram_subentry_id, telegram_subentry in telegram_entry.subentries.items()
+            ] or None
+        return None
+
+    async def _get_user_id(self, name: str) -> str | None:
+        for user in await self.hass.auth.async_get_users():
+            if user.name == name and not user.system_generated:
+                return user.id
+        return None
