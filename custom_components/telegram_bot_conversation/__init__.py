@@ -83,6 +83,7 @@ type TelegramBotConversationConfigEntry = ConfigEntry[None]
 
 MAX_TELEGRAM_LENGTH = 4096
 
+
 async def send_message(
     hass: HomeAssistant,
     chat_id: int,
@@ -322,7 +323,8 @@ class TelegramBotConversationHandler:
                     {
                         CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
                         ATTR_CHAT_ID: event.data[ATTR_CHAT_ID],
-                        ATTR_MESSAGE_THREAD_ID: event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
+                        ATTR_MESSAGE_THREAD_ID: event.data.get(ATTR_MESSAGE_THREAD_ID)
+                        or 0,
                         ATTR_CHAT_ACTION: CHAT_ACTION_TYPING,
                     },
                     context=context,
