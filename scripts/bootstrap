@@ -9,7 +9,11 @@ cd "$(dirname "$0")/.."
 echo "==> Checking for uv..."
 if ! command -v uv >/dev/null 2>&1; then
   echo "UV not found, installing..."
-  pipx install uv
+  if ! command -v pipx >/dev/null 2>&1; then
+    pip install uv
+  else
+    pipx install uv
+  fi
 fi
 
 echo "==> Installing dependencies..."
