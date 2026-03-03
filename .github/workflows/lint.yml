@@ -21,14 +21,15 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: "3.13"
-          cache: "pip"
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@3259c6206f993105e3a61b142c2d97bf4b9ef83d  # v7.1.0
+        with:
+          version: "0.9.3"
 
       - name: Install requirements
-        run: python3 -m pip install -r requirements.txt
+        run: scripts/bootstrap
 
-      - name: Lint
-        run: python3 -m ruff check .
-
-      - name: Format
-        run: python3 -m ruff format . --check
+      - name: Lint check
+        run: scripts/lint-check

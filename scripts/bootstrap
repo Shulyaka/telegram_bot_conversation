@@ -1,0 +1,25 @@
+#!/bin/sh
+
+# script/bootstrap: Install/update all dependencies required to run the project
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+echo "==> Checking for uv..."
+if ! command -v uv >/dev/null 2>&1; then
+  echo "UV not found, installing..."
+  if ! command -v pipx >/dev/null 2>&1; then
+    pip install uv
+  else
+    pipx install uv
+  fi
+fi
+
+echo "==> Installing dependencies..."
+uv pip install --system --requirement requirements.txt
+
+echo "==> Installing pre-commit hooks..."
+pre-commit install
+
+echo "==> Bootstrap completed!"

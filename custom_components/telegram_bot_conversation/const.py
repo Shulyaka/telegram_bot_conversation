@@ -1,7 +1,7 @@
 """Constants for telegram_bot_conversation."""
 
-from logging import Logger, getLogger
 from datetime import timedelta
+from logging import Logger, getLogger
 
 LOGGER: Logger = getLogger(__package__)
 
