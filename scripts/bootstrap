@@ -10,14 +10,14 @@ echo "==> Checking for uv..."
 if ! command -v uv >/dev/null 2>&1; then
   echo "UV not found, installing..."
   if ! command -v pipx >/dev/null 2>&1; then
-    pip install uv
+    python3 -m pip install uv
   else
     pipx install uv
   fi
 fi
 
 echo "==> Installing dependencies..."
-uv pip install --system --requirement requirements.txt
+uv pip install --requirement requirements.txt
 
 echo "==> Installing pre-commit hooks..."
 pre-commit install
