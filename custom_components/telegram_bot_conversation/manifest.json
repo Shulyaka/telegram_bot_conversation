@@ -1,0 +1,12 @@
+{
+  "domain": "telegram_bot_conversation",
+  "name": "Telegram Bot Conversation",
+  "codeowners": [
+    "@Shulyaka"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/Shulyaka/telegram_bot_conversation",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/Shulyaka/telegram_bot_conversation/issues",
+  "version": "0.1.0"
+}
