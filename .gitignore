@@ -27,6 +27,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+uv.lock
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -137,4 +138,27 @@ tags
 # Home Assistant configuration
 config/*
 !config/configuration.yaml
+
+# Home Assistant database and logs
+*.db
+*.db-shm
+*.db-wal
+*.log
+home-assistant.log*
+home-assistant_v2.db*
+.storage
+.cloud
+.google.token
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Ensure these YAML files are ignored, otherwise your secret data/credentials will leak.
+ip_bans.yaml
 secrets.yaml
+known_devices.yaml
+service_account.json
+.shopping_list.json
