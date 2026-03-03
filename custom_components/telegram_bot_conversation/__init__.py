@@ -75,14 +75,13 @@ from .const import (
     CONF_TELEGRAM_ENTRY,
     CONF_TELEGRAM_SUBENTRY,
     CONF_USER,
+    DEFAULT_CONVERSATION_TIMEOUT,
     LOGGER,
-    TELEGRAM_CONVERSATION_TIMEOUT,
 )
 
 type TelegramBotConversationConfigEntry = ConfigEntry[None]
 
 MAX_TELEGRAM_LENGTH = 4096
-
 
 async def send_message(
     hass: HomeAssistant,
@@ -309,39 +308,39 @@ class TelegramBotConversationHandler:
             if config:
                 context.user_id = config.user_id
 
-        await self.hass.services.async_call(
-            TELEGRAM_DOMAIN,
-            SERVICE_SEND_CHAT_ACTION,
-            {
-                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                ATTR_CHAT_ID: event.data[ATTR_CHAT_ID],
-                ATTR_MESSAGE_THREAD_ID: event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
-                ATTR_CHAT_ACTION: CHAT_ACTION_TYPING,
-            },
-            context=context,
-        )
-
-        current_delta = ""
+        current_content = ""
         current_role = None
 
         async def async_chat_log_delta_listener(chat_log: ChatLog, delta: dict) -> None:
             """Handle chat log delta."""
             LOGGER.debug("Chat log delta: %s", delta)
-            nonlocal current_delta, current_role
+            nonlocal current_content, current_role
             if "role" in delta:
-                if current_role == "assistant" and current_delta:
+                await self.hass.services.async_call(
+                    TELEGRAM_DOMAIN,
+                    SERVICE_SEND_CHAT_ACTION,
+                    {
+                        CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                        ATTR_CHAT_ID: event.data[ATTR_CHAT_ID],
+                        ATTR_MESSAGE_THREAD_ID: event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
+                        ATTR_CHAT_ACTION: CHAT_ACTION_TYPING,
+                    },
+                    context=context,
+                )
+
+                if current_role == "assistant" and current_content:
                     await send_message(
                         self.hass,
                         chat_id=event.data[ATTR_CHAT_ID],
                         message_thread_id=event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
-                        message=current_delta,
+                        message=current_content,
                         telegram_entry_id=self.telegram_entry_id,
                         context=context,
                     )
-                current_delta = ""
+                current_content = ""
                 current_role = delta["role"]
             if "content" in delta and current_role == "assistant":
-                current_delta += delta["content"]
+                current_content += delta["content"]
 
         @callback
         def chat_log_delta_listener(chat_log: ChatLog, delta: dict) -> None:
@@ -415,7 +414,7 @@ class TelegramBotConversationHandler:
 
         timeout = self.entry.options.get(
             CONF_CONVERSATION_TIMEOUT,
-            {"seconds": TELEGRAM_CONVERSATION_TIMEOUT.total_seconds()},
+            {"seconds": DEFAULT_CONVERSATION_TIMEOUT.total_seconds()},
         )
         session.last_updated = (
             dt_util.utcnow() + timedelta(**timeout) - CONVERSATION_TIMEOUT

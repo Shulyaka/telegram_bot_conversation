@@ -1,6 +1,7 @@
 """Constants for telegram_bot_conversation."""
 
 from logging import Logger, getLogger
+from datetime import timedelta
 
 LOGGER: Logger = getLogger(__package__)
 
@@ -12,4 +13,4 @@ CONF_TELEGRAM_ENTRY = "telegram_entry"
 CONF_TELEGRAM_SUBENTRY = "telegram_subentry"
 CONF_USER = "user_id"
 
-TELEGRAM_CONVERSATION_TIMEOUT = timedelta(hours=24)
+DEFAULT_CONVERSATION_TIMEOUT = timedelta(hours=24)
