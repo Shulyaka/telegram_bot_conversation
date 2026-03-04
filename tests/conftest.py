@@ -1,7 +1,7 @@
 """Tests helpers."""
 
 from collections.abc import Generator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -89,7 +89,7 @@ def mock_telegram_external_calls() -> Generator[None]:
     test_user = User(123456, "Testbot", True, "mock last name", "mock username")
     message = Message(
         message_id=12345,
-        date=datetime.now(),
+        date=datetime.now(UTC),
         chat=Chat(id=123456, type=ChatType.PRIVATE),
     )
 
@@ -145,7 +145,7 @@ async def mock_telegram_config_entry(
                 title="mock chat 1",
             ),
             ConfigSubentryData(
-                unique_id="1234567890",
+                unique_id="1234567891",
                 data={CONF_CHAT_ID: -123456789},
                 subentry_type=CONF_ALLOWED_CHAT_IDS,
                 title="mock chat 2",
