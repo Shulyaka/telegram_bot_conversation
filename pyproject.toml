@@ -3,6 +3,13 @@ name = "telegram_bot_conversation"
 version = "0.1.1"
 requires-python = ">=3.14"
 
+[tool.pytest]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+relative_files = true
+
 [tool.ruff]
 # Based on https://github.com/home-assistant/core/blob/dev/pyproject.toml
 target-version = "py314"
@@ -184,7 +191,6 @@ mark-parentheses = false
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "async_timeout".msg = "use asyncio.timeout instead"
 "pytz".msg = "use zoneinfo instead"
-"tests".msg = "You should not import tests"
 
 [tool.ruff.lint.isort]
 force-sort-within-sections = true

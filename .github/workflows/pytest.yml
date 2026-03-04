@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.13', '3.14']
+
+    steps:
+    - uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        version: 1.0
+        packages: ffmpeg
+
+    - uses: actions/checkout@main
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@main
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@main
+
+    - name: Install requirements
+      run: scripts/bootstrap
+
+    - name: Pytest
+      run: pytest --cov custom_components/telegram_bot_conversation --cov-report=term-missing $(test "$RUNNER_DEBUG" && echo "-vv")
+
+    - name: Coveralls
+      uses: AndreMiras/coveralls-python-action@develop
+      with:
+        parallel: true
+        flag-name: ${{ matrix.python-version }}
+
+  coverage:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Coverage
+      uses: AndreMiras/coveralls-python-action@develop
+      with:
+        parallel-finished: true
