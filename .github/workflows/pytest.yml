@@ -33,6 +33,7 @@ jobs:
       with:
         parallel: true
         flag-name: ${{ matrix.python-version }}
+        debug: $(test "$RUNNER_DEBUG" && echo "true")
 
   coverage:
     needs: build
@@ -42,3 +43,4 @@ jobs:
       uses: AndreMiras/coveralls-python-action@develop
       with:
         parallel-finished: true
+        debug: $(test "$RUNNER_DEBUG" && echo "true")
