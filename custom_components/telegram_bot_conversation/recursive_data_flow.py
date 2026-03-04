@@ -131,10 +131,11 @@ class RecursiveDataFlow(RecursiveBaseFlow):
             )
             for index, (var, val) in enumerate(recursive_schema.items(), start=1):
                 if self.step_enabled(str(var)):
+                    data[str(var)] = data.get(str(var), {}).copy()
                     yield from traverse_config(
                         str(var),
                         val,
-                        data.setdefault(str(var), {}),
+                        data[str(var)],
                         last_config and index == len(recursive_schema),
                     )
 
