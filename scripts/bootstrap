@@ -51,7 +51,7 @@ if [ "$1" = "--full" ]; then
   # End fix
 
   PIPARGS="$PIPARGS --requirement /tmp/requirements_test_all.txt"
-else:
+else
   # Temporary fix until pytest-homeassistant-custom-component is updated to support HA 2026.3.0:
   uv pip install $PIPARGS --requirement requirements.txt
   uv pip install $PIPARGS "homeassistant==${HA_VERSION}"
