@@ -16,14 +16,25 @@ if ! command -v uv >/dev/null 2>&1; then
   fi
 fi
 
+HA_VERSION="${HA_VERSION:-$(grep '"homeassistant"' hacs.json | head -1 | sed 's/.*"homeassistant"\s*:\s*"\([^"]*\)".*/\1/')}"
+
+if [ -z "$HA_VERSION" ]; then
+  echo "Error: HA_VERSION not set and could not be determined from hacs.json" >&2
+  exit 1
+fi
+
 echo "==> Installing dependencies..."
 if [ -z "$VIRTUAL_ENV" ]; then
   echo "No virtual environment detected, installing globally..."
-  uv pip install --system --requirement requirements.txt
+  PIPARGS="--system"
 else
   echo "Virtual environment detected: $VIRTUAL_ENV"
-  uv pip install --requirement requirements.txt
 fi
+
+#uv pip install $PIPARGS --requirement requirements.txt "homeassistant==${HA_VERSION}"
+# Temporary fix until pytest-homeassistant-custom-component is updated to support HA 2026.3.0:
+uv pip install $PIPARGS --requirement requirements.txt
+uv pip install $PIPARGS "homeassistant==${HA_VERSION}"
 
 echo "==> Installing pre-commit hooks..."
 pre-commit install
