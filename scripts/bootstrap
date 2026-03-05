@@ -37,20 +37,21 @@ if [ "$1" = "--full" ]; then
   echo "Fetching Home Assistant dependencies for version ${HA_VERSION}..."
 
   HA_CORE_BASE_URL="https://raw.githubusercontent.com/home-assistant/core/${HA_VERSION}"
-  trap "rm -rf /tmp/homeassistant /tmp/requirements.txt /tmp/requirements_all.txt /tmp/requirements_test_pre_commit.txt /tmp/requirements_test.txt" EXIT
-  mkdir -p /tmp/homeassistant
-  curl -fsSL "${HA_CORE_BASE_URL}/homeassistant/package_constraints.txt" -o /tmp/homeassistant/package_constraints.txt  # constraints for requirements files
-  curl -fsSL "${HA_CORE_BASE_URL}/requirements.txt" -o /tmp/requirements.txt  # required by requirements_all.txt
-  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_pre_commit.txt" -o /tmp/requirements_test_pre_commit.txt  # required by requirements_test.txt
-  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test.txt" -o /tmp/requirements_test.txt  # required by requirements_test_all.txt
-  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_all.txt" -o /tmp/requirements_test_all.txt
+  tmpdir=$(mktemp -d)
+  trap "rm -rf $tmpdir" EXIT
+  mkdir -p $tmpdir/homeassistant
+  curl -fsSL "${HA_CORE_BASE_URL}/homeassistant/package_constraints.txt" -o $tmpdir/homeassistant/package_constraints.txt  # constraints for requirements files
+  curl -fsSL "${HA_CORE_BASE_URL}/requirements.txt" -o $tmpdir/requirements.txt  # required by requirements_all.txt
+  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_pre_commit.txt" -o $tmpdir/requirements_test_pre_commit.txt  # required by requirements_test.txt
+  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test.txt" -o $tmpdir/requirements_test.txt  # required by requirements_test_all.txt
+  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_all.txt" -o $tmpdir/requirements_test_all.txt
 
   # Temporary fix until pytest-homeassistant-custom-component is updated to support HA 2026.3.0:
   uv pip install $PIPARGS --requirement requirements.txt
-  uv pip install $PIPARGS --requirement /tmp/requirements_test_all.txt "homeassistant==${HA_VERSION}"
+  uv pip install $PIPARGS --requirement $tmpdir/requirements_test_all.txt "homeassistant==${HA_VERSION}"
   # End fix
 
-  PIPARGS="$PIPARGS --requirement /tmp/requirements_test_all.txt"
+  PIPARGS="$PIPARGS --requirement $tmpdir/requirements_test_all.txt"
 else
   # Temporary fix until pytest-homeassistant-custom-component is updated to support HA 2026.3.0:
   uv pip install $PIPARGS --requirement requirements.txt
