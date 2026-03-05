@@ -318,7 +318,7 @@ class TelegramBotConversationHandler:
         def get_reaction(content: str) -> str | None:
             """Extract reaction from content if it starts with a known reaction emoji."""
             matches = [
-                e for e in tuple(REACTION_EMOJI) if content.lstrip().startswith(e)
+                e for e in REACTION_EMOJI if content.lstrip().startswith(e)
             ]
             return max(matches, key=len) if matches else None
 
