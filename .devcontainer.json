@@ -51,7 +51,7 @@
                     "**/docs/**",
                     "**/node_modules/**"
                 ],
-                "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+                //"python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
                 "python.analysis.extraPaths": [
                     "${workspaceFolder}/.venv/lib/python*/site-packages"
                 ],
