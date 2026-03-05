@@ -24,11 +24,21 @@ if [ -z "$HA_VERSION" ]; then
 fi
 
 echo "==> Installing dependencies..."
-if [ -z "$VIRTUAL_ENV" ]; then
-  echo "No virtual environment detected, installing globally..."
-  PIPARGS="--system"
-else
-  echo "Virtual environment detected: $VIRTUAL_ENV"
+
+PIPARGS="--upgrade"
+if [ "$1" == "--full" ]; then
+  echo "Fetching Home Assistant dependencies..."
+
+  HA_CORE_BASE_URL="https://raw.githubusercontent.com/home-assistant/core/${HA_VERSION}"
+  trap "rm -rf /tmp/homeassistant /tmp/requirements.txt /tmp/requirements_all.txt /tmp/requirements_test_pre_commit.txt /tmp/requirements_test.txt" EXIT
+  mkdir -p /tmp/homeassistant
+  curl -fsSL "${HA_CORE_BASE_URL}/homeassistant/package_constraints.txt" -o /tmp/homeassistant/package_constraints.txt  # constraints for requirements files
+  curl -fsSL "${HA_CORE_BASE_URL}/requirements.txt" -o /tmp/requirements.txt  # required by requirements_all.txt
+  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_pre_commit.txt" -o /tmp/requirements_test_pre_commit.txt  # required by requirements_test.txt
+  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test.txt" -o /tmp/requirements_test.txt  # required by requirements_test_all.txt
+  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_all.txt" -o /tmp/requirements_test_all.txt
+
+  PIPARGS="$PIPARGS --requirement /tmp/requirements_test_all.txt"
 fi
 
 #uv pip install $PIPARGS --requirement requirements.txt "homeassistant==${HA_VERSION}"

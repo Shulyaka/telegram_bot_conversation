@@ -1,7 +1,7 @@
 {
     "name": "Shulyaka/telegram_bot_conversation",
     "image": "mcr.microsoft.com/devcontainers/python:3.14",
-    "postCreateCommand": "scripts/setup",
+    "postCreateCommand": "scripts/bootstrap --full",
     "postStartCommand": "scripts/motd",
     "containerEnv": {
         // Enable asyncio debug mode for easier debugging of async code
