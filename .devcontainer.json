@@ -1,7 +1,7 @@
 {
-    "name": "Shulyaka/telegram_bot_conversation",
+    "name": "Telegram Bot Conversation",
     "image": "mcr.microsoft.com/devcontainers/python:3.14",
-    "postCreateCommand": "scripts/setup",
+    "postCreateCommand": "git config --global --add safe.directory ${containerWorkspaceFolder} && scripts/setup --full",
     "postStartCommand": "scripts/motd",
     "containerEnv": {
         // Enable asyncio debug mode for easier debugging of async code
@@ -51,9 +51,9 @@
                     "**/docs/**",
                     "**/node_modules/**"
                 ],
-                "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+                //"python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
                 "python.analysis.extraPaths": [
-                    "${workspaceFolder}/.venv/lib/python*/site-packages"
+                    "${workspaceFolder}/.venv/lib/python3.14/site-packages"
                 ],
                 "[python]": {
                     "editor.defaultFormatter": "charliermarsh.ruff"

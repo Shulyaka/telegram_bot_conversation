@@ -1,24 +1,24 @@
 #!/bin/sh
-# script/setup: Set up project for first-time use after cloning
+# script/setup: Set up a virtual environment for the project
 
 set -e
 
 cd "$(dirname "$0")/.."
 
-echo "==> Setting up virtual environment..."
-if [ ! -n "$VIRTUAL_ENV" ]; then
-  if [ -x "$(command -v uv)" ]; then
-    uv venv .venv
-  else
-    python3 -m venv .venv
-  fi
-  source .venv/bin/activate
-fi
-
 if ! [ -x "$(command -v uv)" ]; then
   python3 -m pip install uv
 fi
 
-scripts/bootstrap
+echo "==> Setting up virtual environment..."
+if [ ! -n "$VIRTUAL_ENV" ]; then
+  if [ -x "$(command -v uv)" ]; then
+    uv venv .venv --clear
+  else
+    python3 -m venv .venv
+  fi
+  . .venv/bin/activate
+fi
+
+scripts/bootstrap $@
 
 echo "==> Project is now ready to go!"
