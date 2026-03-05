@@ -1,7 +1,7 @@
 {
-    "name": "Shulyaka/telegram_bot_conversation",
+    "name": "Telegram Bot Conversation",
     "image": "mcr.microsoft.com/devcontainers/python:3.14",
-    "postCreateCommand": "scripts/bootstrap --full",
+    "postCreateCommand": "git config --global --add safe.directory ${containerWorkspaceFolder} && scripts/setup --full",
     "postStartCommand": "scripts/motd",
     "containerEnv": {
         // Enable asyncio debug mode for easier debugging of async code
