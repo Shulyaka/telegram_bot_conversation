@@ -34,7 +34,7 @@ else
 fi
 
 if [ "$1" = "--full" ]; then
-  echo "Fetching Home Assistant dependencies..."
+  echo "Fetching Home Assistant dependencies for version ${HA_VERSION}..."
 
   HA_CORE_BASE_URL="https://raw.githubusercontent.com/home-assistant/core/${HA_VERSION}"
   trap "rm -rf /tmp/homeassistant /tmp/requirements.txt /tmp/requirements_all.txt /tmp/requirements_test_pre_commit.txt /tmp/requirements_test.txt" EXIT
