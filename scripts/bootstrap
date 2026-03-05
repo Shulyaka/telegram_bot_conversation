@@ -26,7 +26,13 @@ fi
 echo "==> Installing dependencies..."
 
 PIPARGS="--upgrade"
-if [ "$1" == "--full" ]; then
+if [ -z "$VIRTUAL_ENV" ]; then
+  echo "No virtual environment detected, installing globally..."
+  PIPARGS="$PIPARGS --system"
+else
+  echo "Virtual environment detected: $VIRTUAL_ENV"
+
+if [ "$1" = "--full" ]; then
   echo "Fetching Home Assistant dependencies..."
 
   HA_CORE_BASE_URL="https://raw.githubusercontent.com/home-assistant/core/${HA_VERSION}"
