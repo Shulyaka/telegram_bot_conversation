@@ -12,7 +12,7 @@ fi
 echo "==> Setting up virtual environment..."
 if [ ! -n "$VIRTUAL_ENV" ]; then
   if [ -x "$(command -v uv)" ]; then
-    uv venv .venv --clear
+    uv venv .venv
   else
     python3 -m venv .venv
   fi
