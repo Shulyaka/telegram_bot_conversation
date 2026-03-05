@@ -53,7 +53,7 @@
                 ],
                 "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
                 "python.analysis.extraPaths": [
-                    "${workspaceFolder}/.venv/lib/python*/site-packages"
+                    "${workspaceFolder}/.venv/lib/python3.14/site-packages"
                 ],
                 "[python]": {
                     "editor.defaultFormatter": "charliermarsh.ruff"
