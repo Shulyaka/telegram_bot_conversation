@@ -1,4 +1,7 @@
 #!/usr/bin/env sh
+
+# script/run-in-env.sh: Ensure that the command is executed in the context of the virtualenv, if it exists
+
 set -eu
 
 # Used in venv activate script.
