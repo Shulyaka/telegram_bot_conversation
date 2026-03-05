@@ -39,8 +39,11 @@ from homeassistant.components.telegram_bot.const import (
     ATTR_FILE_PATH,
     ATTR_KEYBOARD_INLINE,
     ATTR_MESSAGE,
+    ATTR_MESSAGE_ID,
     ATTR_MESSAGE_THREAD_ID,
+    ATTR_MSGID,
     ATTR_PARSER,
+    ATTR_REACTION,
     ATTR_TEXT,
     ATTR_USER_ID,
     CHAT_ACTION_TYPING,
@@ -55,6 +58,7 @@ from homeassistant.components.telegram_bot.const import (
     SERVICE_DOWNLOAD_FILE,
     SERVICE_SEND_CHAT_ACTION,
     SERVICE_SEND_MESSAGE,
+    SERVICE_SET_MESSAGE_REACTION,
     SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -75,6 +79,7 @@ from .const import (
     CONF_USER,
     DEFAULT_CONVERSATION_TIMEOUT,
     LOGGER,
+    REACTION_EMOJI,
 )
 
 type TelegramBotConversationConfigEntry = ConfigEntry[None]
@@ -310,6 +315,11 @@ class TelegramBotConversationHandler:
         current_content = ""
         current_role = None
 
+        def get_reaction(content: str) -> str | None:
+            """Extract reaction from content if it starts with a known reaction emoji."""
+            matches = [e for e in REACTION_EMOJI if content.lstrip().startswith(e)]
+            return max(matches, key=len) if matches else None
+
         async def async_chat_log_delta_listener(chat_log: ChatLog, delta: dict) -> None:
             """Handle chat log delta."""
             LOGGER.debug("Chat log delta: %s", delta)
@@ -340,7 +350,23 @@ class TelegramBotConversationHandler:
                 current_content = ""
                 current_role = delta["role"]
             if "content" in delta and current_role == "assistant":
-                current_content += delta["content"]
+                if not current_content and (reaction := get_reaction(delta["content"])):
+                    await self.hass.services.async_call(
+                        TELEGRAM_DOMAIN,
+                        SERVICE_SET_MESSAGE_REACTION,
+                        {
+                            CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                            ATTR_MESSAGE_ID: event.data.get(ATTR_MSGID) or "last",
+                            ATTR_CHAT_ID: event.data[ATTR_CHAT_ID],
+                            ATTR_REACTION: reaction,
+                        },
+                        context=context,
+                    )
+                    current_content = (
+                        delta["content"].lstrip().removeprefix(reaction).lstrip()
+                    )
+                else:
+                    current_content += delta["content"]
 
         @callback
         def chat_log_delta_listener(chat_log: ChatLog, delta: dict) -> None:
@@ -408,6 +434,7 @@ class TelegramBotConversationHandler:
                 conversation_id=session.conversation_id,
                 context=context,
                 agent_id=self.chat_config[event.data[ATTR_CHAT_ID]].agent_id,
+                extra_system_prompt=f"The user is interacting through Telegram. Markdown is supported. If the response message starts with any of {REACTION_EMOJI}, it will be added as a reaction to the user message.",
             )
             # Flush any remaining delta
             chat_log_delta_listener(chat_log, {"role": None})
