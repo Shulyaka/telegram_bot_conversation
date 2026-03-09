@@ -19,6 +19,6 @@ if [ ! -n "$VIRTUAL_ENV" ]; then
   . .venv/bin/activate
 fi
 
-scripts/bootstrap $@
+scripts/run-in-env.sh scripts/bootstrap $@
 
 echo "==> Project is now ready to go!"
