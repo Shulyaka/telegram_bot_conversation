@@ -2,6 +2,8 @@
 
 This is a Home Assistant custom integration that allows you to use the [Telegram bot](https://www.home-assistant.io/integrations/telegram_bot/) integration with [Conversation](https://www.home-assistant.io/integrations/conversation/) agents such as [OpenAI](https://www.home-assistant.io/integrations/openai_conversation/), [Anthropic Claude](https://www.home-assistant.io/integrations/anthropic/), or [Google Gemini](https://www.home-assistant.io/integrations/google_generative_ai_conversation/).
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?category=integration&owner=Shulyaka&repository=telegram_bot_conversation)
+
 ## Requirements
 
 - Home Assistant 2026.3 or later
