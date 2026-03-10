@@ -30,6 +30,7 @@ from homeassistant.components.conversation import (
     async_get_chat_log,
     get_agent_manager,
 )
+from homeassistant.components.notify import DOMAIN as NOTIFY_DOMAIN
 from homeassistant.components.telegram_bot.const import (
     ATTR_CALLBACK_QUERY_ID,
     ATTR_CHAT_ACTION,
@@ -64,8 +65,10 @@ from homeassistant.components.telegram_bot.const import (
     SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import Context, Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.chat_session import (
     CONVERSATION_TIMEOUT,
     async_get_chat_session,
@@ -89,12 +92,22 @@ type TelegramBotConversationConfigEntry = ConfigEntry[None]
 MAX_TELEGRAM_LENGTH = 4096
 
 
+def get_telegram_service_target(
+    chat_id: int, notify_entity_id: str | None
+) -> dict[str, str | int | list[str]]:
+    """Build a telegram service target payload."""
+    if notify_entity_id:
+        return {ATTR_ENTITY_ID: [notify_entity_id]}
+    return {ATTR_CHAT_ID: chat_id}
+
+
 async def send_message(
     hass: HomeAssistant,
     chat_id: int,
     message_thread_id: int,
     message: str,
     telegram_entry_id: str,
+    notify_entity_id: str | None = None,
     context: Context | None = None,
     data: dict[str, Any] | None = None,
 ) -> dict:
@@ -132,6 +145,7 @@ async def send_message(
                 message_thread_id,
                 message[:i],
                 telegram_entry_id,
+                notify_entity_id,
                 context,
                 data,
             )
@@ -145,6 +159,7 @@ async def send_message(
                 message_thread_id,
                 message,
                 telegram_entry_id,
+                notify_entity_id,
                 context,
                 data,
             )
@@ -162,7 +177,7 @@ async def send_message(
             {
                 **data,
                 ATTR_MESSAGE: markdownify(message),
-                ATTR_CHAT_ID: chat_id,
+                **get_telegram_service_target(chat_id, notify_entity_id),
                 ATTR_MESSAGE_THREAD_ID: message_thread_id,
                 CONF_CONFIG_ENTRY_ID: telegram_entry_id,
                 ATTR_PARSER: "markdownv2",
@@ -182,7 +197,7 @@ async def send_message(
             {
                 **data,
                 ATTR_MESSAGE: message,
-                ATTR_CHAT_ID: chat_id,
+                **get_telegram_service_target(chat_id, notify_entity_id),
                 ATTR_MESSAGE_THREAD_ID: message_thread_id,
                 CONF_CONFIG_ENTRY_ID: telegram_entry_id,
                 ATTR_PARSER: "markdown",
@@ -201,7 +216,7 @@ async def send_message(
         {
             **data,
             ATTR_MESSAGE: message,
-            ATTR_CHAT_ID: chat_id,
+            **get_telegram_service_target(chat_id, notify_entity_id),
             ATTR_MESSAGE_THREAD_ID: message_thread_id,
             CONF_CONFIG_ENTRY_ID: telegram_entry_id,
             ATTR_PARSER: "plain_text",
@@ -218,6 +233,7 @@ class ChatConfig:
 
     user_id: str | None
     agent_id: str | None
+    notify_entity_id: str | None
     subentry_id: str
 
 
@@ -252,6 +268,15 @@ class TelegramBotConversationHandler:
             and subentry.data.get(CONF_CHAT_ID) is not None
             and subentry.subentry_id in linked_telegram_subentries
         }
+        entity_registry = er.async_get(hass)
+        telegram_notify_map = {
+            entity_entry.config_subentry_id: entity_entry.entity_id
+            for entity_entry in er.async_entries_for_config_entry(
+                entity_registry, telegram_entry.entry_id
+            )
+            if entity_entry.config_subentry_id in linked_telegram_subentries
+            and entity_entry.domain == NOTIFY_DOMAIN
+        }
 
         self.chat_config: dict[int, ChatConfig] = {}
         for subentry_id, subentry in entry.subentries.items():
@@ -264,6 +289,7 @@ class TelegramBotConversationHandler:
             self.chat_config[chat_id] = ChatConfig(
                 user_id=subentry.data.get(CONF_USER),
                 agent_id=subentry.data.get(CONF_CONVERSATION_AGENT),
+                notify_entity_id=telegram_notify_map.get(tg_sub),
                 subentry_id=subentry_id,
             )
 
@@ -309,10 +335,10 @@ class TelegramBotConversationHandler:
         if event.data.get(ATTR_MESSAGE_THREAD_ID) is not None:
             conversation_id += f"_{event.data[ATTR_MESSAGE_THREAD_ID]}"
         context = event.context
+        chat_config = self.chat_config.get(event.data[ATTR_CHAT_ID])
         if context.user_id is None:
-            config = self.chat_config.get(event.data[ATTR_CHAT_ID])
-            if config:
-                context.user_id = config.user_id
+            if chat_config:
+                context.user_id = chat_config.user_id
 
         current_content = ""
         current_role = None
@@ -332,7 +358,10 @@ class TelegramBotConversationHandler:
                     SERVICE_SEND_CHAT_ACTION,
                     {
                         CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                        ATTR_CHAT_ID: event.data[ATTR_CHAT_ID],
+                        **get_telegram_service_target(
+                            event.data[ATTR_CHAT_ID],
+                            chat_config.notify_entity_id if chat_config else None,
+                        ),
                         ATTR_MESSAGE_THREAD_ID: event.data.get(ATTR_MESSAGE_THREAD_ID)
                         or 0,
                         ATTR_CHAT_ACTION: CHAT_ACTION_TYPING,
@@ -347,6 +376,9 @@ class TelegramBotConversationHandler:
                         message_thread_id=event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
                         message=current_content,
                         telegram_entry_id=self.telegram_entry_id,
+                        notify_entity_id=(
+                            chat_config.notify_entity_id if chat_config else None
+                        ),
                         context=context,
                     )
                 current_content = ""
@@ -456,6 +488,9 @@ class TelegramBotConversationHandler:
                 message_thread_id=event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
                 message=conversation_result.response.speech["plain"]["speech"],
                 telegram_entry_id=self.telegram_entry_id,
+                notify_entity_id=(
+                    chat_config.notify_entity_id if chat_config else None
+                ),
                 context=context,
             )
 
@@ -552,6 +587,7 @@ class TelegramBotConversationHandler:
                             agents.get(selected_agent, selected_agent)
                         }`",
                         telegram_entry_id=self.telegram_entry_id,
+                        notify_entity_id=self.chat_config[chat_id].notify_entity_id,
                         context=context,
                     )
                 else:
@@ -563,6 +599,7 @@ class TelegramBotConversationHandler:
                             agents.get(current_agent, current_agent)
                         }`",
                         telegram_entry_id=self.telegram_entry_id,
+                        notify_entity_id=self.chat_config[chat_id].notify_entity_id,
                         context=context,
                         data={
                             ATTR_KEYBOARD_INLINE: [
@@ -605,8 +642,8 @@ class TelegramBotConversationHandler:
         """Handle callback query events."""
         LOGGER.debug("callback_event data: %s", event.data)
         context = event.context
+        config = self.chat_config.get(event.data[ATTR_CHAT_ID])
         if context.user_id is None:
-            config = self.chat_config.get(event.data[ATTR_CHAT_ID])
             if config:
                 context.user_id = config.user_id
         args = event.data.get("data", "").split(" ")
@@ -635,7 +672,10 @@ class TelegramBotConversationHandler:
                     SERVICE_EDIT_REPLYMARKUP,
                     {
                         CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                        ATTR_CHAT_ID: event.data[ATTR_CHAT_ID],
+                        **get_telegram_service_target(
+                            event.data[ATTR_CHAT_ID],
+                            config.notify_entity_id if config else None,
+                        ),
                         ATTR_MESSAGE_ID: event.data[ATTR_MSG][ATTR_MESSAGE_ID],
                         ATTR_KEYBOARD_INLINE: [],
                     },
