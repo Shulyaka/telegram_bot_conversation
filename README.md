@@ -16,5 +16,6 @@ This is a Home Assistant custom integration that allows you to use the [Telegram
 - Extended conversation history timeout
 - Easy switch between agents with `/model` command
 - Full Markdown support
+- Code blocks can be sent as files, mermaid diagrams can be rendered into images, and LaTeX symbols can be translated into Unicode
 - Attachments are supported if your agent supports them (usually only images and pdf, and only for the last message)
 - Partial support for threaded bots (awaiting `telegram_bot` for full support)
