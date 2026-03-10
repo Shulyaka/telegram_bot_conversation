@@ -629,17 +629,18 @@ class TelegramBotConversationHandler:
                 },
                 context=context,
             )
-            await self.hass.services.async_call(
-                TELEGRAM_DOMAIN,
-                SERVICE_EDIT_REPLYMARKUP,
-                {
-                    CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                    ATTR_CHAT_ID: event.data[ATTR_CHAT_ID],
-                    ATTR_MESSAGE_ID: event.data[ATTR_MSG][ATTR_MESSAGE_ID],
-                    ATTR_KEYBOARD_INLINE: [],
-                },
-                context=context,
-            )
+            if event.data[ATTR_MSG]:
+                await self.hass.services.async_call(
+                    TELEGRAM_DOMAIN,
+                    SERVICE_EDIT_REPLYMARKUP,
+                    {
+                        CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                        ATTR_CHAT_ID: event.data[ATTR_CHAT_ID],
+                        ATTR_MESSAGE_ID: event.data[ATTR_MSG][ATTR_MESSAGE_ID],
+                        ATTR_KEYBOARD_INLINE: [],
+                    },
+                    context=context,
+                )
 
         except Exception as e:  # noqa: BLE001
             LOGGER.exception("Failed to process command: %s", e, stack_info=True)
