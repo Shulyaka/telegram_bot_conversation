@@ -12,6 +12,10 @@ CONF_CONVERSATION_AGENT = "conversation_agent"
 CONF_TELEGRAM_ENTRY = "telegram_entry"
 CONF_TELEGRAM_SUBENTRY = "telegram_subentry"
 CONF_USER = "user_id"
+CONF_ATTACHMENTS = "attachments"
+CONF_LATEX = "latex"
+CONF_MERMAID = "mermaid"
+
 
 DEFAULT_CONVERSATION_TIMEOUT = timedelta(hours=24)
 

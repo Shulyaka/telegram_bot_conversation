@@ -53,10 +53,16 @@
         "step": {
             "init": {
                 "data": {
-                    "conversation_timeout": "Conversation timeout"
+                    "attachments": "Attachments",
+                    "conversation_timeout": "Conversation timeout",
+                    "latex": "LaTeX",
+                    "mermaid": "Mermaid"
                 },
                 "data_description": {
-                    "conversation_timeout": "Overwrite default conversation timeout for context management. The bot will ignore message history if the chat is interrupted for longer than this time."
+                    "attachments": "Send code blocks as files",
+                    "conversation_timeout": "Overwrite default conversation timeout for context management. The bot will ignore message history if the chat is interrupted for longer than this time",
+                    "latex": "Convert LaTeX to Unicode",
+                    "mermaid": "Render Mermaid diagrams in messages as images"
                 },
                 "description": "Configure options for Telegram Bot conversation."
             }

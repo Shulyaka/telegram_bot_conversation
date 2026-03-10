@@ -2,10 +2,7 @@
 
 from pytest_homeassistant_custom_component.common import async_mock_service
 
-from custom_components.telegram_bot_conversation import (
-    TelegramBotConversationHandler,
-    send_message,
-)
+from custom_components.telegram_bot_conversation import TelegramBotConversationHandler
 from custom_components.telegram_bot_conversation.const import CONF_TELEGRAM_SUBENTRY
 from homeassistant.components.telegram_bot.const import (
     ATTR_CHAT_ID,
@@ -55,9 +52,14 @@ async def test_handler_resolves_notify_entity_id(
 async def test_send_message_uses_notify_entity_id(
     hass: HomeAssistant,
     mock_telegram_config_entry,
+    mock_config_entry,
 ) -> None:
     """Test that send_message targets the telegram notify entity when available."""
-    notify_entity_id = "notify.mock_chat_1"
+    handler = TelegramBotConversationHandler(hass, mock_config_entry)
+
+    # Pick the first chat to test with
+    _, telegram_subentry = next(iter(mock_telegram_config_entry.subentries.items()))
+    chat_id = telegram_subentry.data[CONF_CHAT_ID]
 
     calls = async_mock_service(
         hass,
@@ -66,13 +68,11 @@ async def test_send_message_uses_notify_entity_id(
         response={"chats": []},
     )
 
-    await send_message(
+    await handler.send_message(
         hass,
-        chat_id=12345678,
+        chat_id=chat_id,
         message_thread_id=0,
         message="Hello",
-        telegram_entry_id=mock_telegram_config_entry.entry_id,
-        notify_entity_id=notify_entity_id,
     )
 
     assert len(calls) == 1
@@ -80,7 +80,7 @@ async def test_send_message_uses_notify_entity_id(
     assert call.domain == TELEGRAM_DOMAIN
     assert call.service == SERVICE_SEND_MESSAGE
     assert call.data[ATTR_MESSAGE] == "Hello\n"
-    assert call.data[ATTR_ENTITY_ID] == [notify_entity_id]
+    assert call.data[ATTR_ENTITY_ID] == [handler.chat_config[chat_id].notify_entity_id]
     assert ATTR_CHAT_ID not in call.data
     assert call.data[ATTR_MESSAGE_THREAD_ID] == 0
     assert call.data[CONF_CONFIG_ENTRY_ID] == mock_telegram_config_entry.entry_id

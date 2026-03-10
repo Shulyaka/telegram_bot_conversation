@@ -1,5 +1,15 @@
 """Constants for telegram_bot_conversation tests."""
 
-from custom_components.telegram_bot_conversation.const import CONF_CONVERSATION_TIMEOUT
+from custom_components.telegram_bot_conversation.const import (
+    CONF_ATTACHMENTS,
+    CONF_CONVERSATION_TIMEOUT,
+    CONF_LATEX,
+    CONF_MERMAID,
+)
 
-MOCK_OPTIONS_CONFIG = {CONF_CONVERSATION_TIMEOUT: {"minutes": 15}}
+MOCK_OPTIONS_CONFIG = {
+    CONF_CONVERSATION_TIMEOUT: {"minutes": 15},
+    CONF_ATTACHMENTS: True,
+    CONF_LATEX: False,
+    CONF_MERMAID: False,
+}

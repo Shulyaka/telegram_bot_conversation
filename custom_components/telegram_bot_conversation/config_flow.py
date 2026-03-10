@@ -17,8 +17,11 @@ from homeassistant.helpers import selector
 
 from . import TelegramBotConversationConfigEntry
 from .const import (
+    CONF_ATTACHMENTS,
     CONF_CONVERSATION_AGENT,
     CONF_CONVERSATION_TIMEOUT,
+    CONF_LATEX,
+    CONF_MERMAID,
     CONF_TELEGRAM_ENTRY,
     CONF_TELEGRAM_SUBENTRY,
     CONF_USER,
@@ -30,7 +33,10 @@ OPTIONS_SCHEMA = vol.Schema(
     {
         vol.Required(
             CONF_CONVERSATION_TIMEOUT, default={"minutes": 30}
-        ): selector.DurationSelector()
+        ): selector.DurationSelector(),
+        vol.Optional(CONF_ATTACHMENTS, default=False): bool,
+        vol.Optional(CONF_LATEX, default=True): bool,
+        vol.Optional(CONF_MERMAID, default=True): bool,
     }
 )
 
