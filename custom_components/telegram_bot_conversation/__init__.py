@@ -41,6 +41,7 @@ from homeassistant.components.telegram_bot.const import (
     ATTR_MESSAGE,
     ATTR_MESSAGE_ID,
     ATTR_MESSAGE_THREAD_ID,
+    ATTR_MSG,
     ATTR_MSGID,
     ATTR_PARSER,
     ATTR_REACTION,
@@ -56,6 +57,7 @@ from homeassistant.components.telegram_bot.const import (
     EVENT_TELEGRAM_TEXT,
     SERVICE_ANSWER_CALLBACK_QUERY,
     SERVICE_DOWNLOAD_FILE,
+    SERVICE_EDIT_REPLYMARKUP,
     SERVICE_SEND_CHAT_ACTION,
     SERVICE_SEND_MESSAGE,
     SERVICE_SET_MESSAGE_REACTION,
@@ -623,7 +625,18 @@ class TelegramBotConversationHandler:
                 {
                     CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
                     ATTR_MESSAGE: "Done",
-                    ATTR_CALLBACK_QUERY_ID: event.data.get("id"),
+                    ATTR_CALLBACK_QUERY_ID: event.data.get(ATTR_MSGID),
+                },
+                context=context,
+            )
+            await self.hass.services.async_call(
+                TELEGRAM_DOMAIN,
+                SERVICE_EDIT_REPLYMARKUP,
+                {
+                    CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                    ATTR_CHAT_ID: event.data[ATTR_CHAT_ID],
+                    ATTR_MESSAGE_ID: event.data[ATTR_MSG][ATTR_MESSAGE_ID],
+                    ATTR_KEYBOARD_INLINE: [],
                 },
                 context=context,
             )
