@@ -17,27 +17,21 @@ from homeassistant.helpers import selector
 
 from . import TelegramBotConversationConfigEntry
 from .const import (
+    CONF_ATTACHMENTS,
     CONF_CONVERSATION_AGENT,
     CONF_CONVERSATION_TIMEOUT,
+    CONF_LATEX,
+    CONF_MERMAID,
     CONF_TELEGRAM_ENTRY,
     CONF_TELEGRAM_SUBENTRY,
+    CONF_TMPDIR,
     CONF_USER,
     DOMAIN,
 )
 from .recursive_data_flow import AbortRecursiveFlow, RecursiveConfigFlow
 
-OPTIONS_SCHEMA = vol.Schema(
-    {
-        vol.Required(
-            CONF_CONVERSATION_TIMEOUT, default={"minutes": 30}
-        ): selector.DurationSelector()
-    }
-)
 
-
-class TelegramBotConversationFlow(
-    RecursiveConfigFlow, domain=DOMAIN, options_schema=OPTIONS_SCHEMA
-):
+class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
     """Handle config and options flow for Telegram Bot Conversation."""
 
     VERSION = 1
@@ -79,6 +73,27 @@ class TelegramBotConversationFlow(
                 }
             )
         raise AbortRecursiveFlow("no_telegram_bot_entries")
+
+    async def get_options_schema(self) -> vol.Schema:
+        """Get options schema."""
+        return vol.Schema(
+            {
+                vol.Required(
+                    CONF_CONVERSATION_TIMEOUT, default={"minutes": 30}
+                ): selector.DurationSelector(),
+                vol.Required(
+                    CONF_TMPDIR, default=self.hass.config.path("www")
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=list(self.hass.config.allowlist_external_dirs),
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(CONF_ATTACHMENTS, default=False): bool,
+                vol.Optional(CONF_LATEX, default=True): bool,
+                vol.Optional(CONF_MERMAID, default=True): bool,
+            }
+        )
 
     @property
     def title(self) -> str:

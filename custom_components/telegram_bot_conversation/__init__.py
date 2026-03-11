@@ -13,12 +13,20 @@ https://github.com/Shulyaka/telegram_bot_conversation
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+import tempfile
+from typing import Any, Self
 
-from telegramify_markdown import markdownify
+from telegramify_markdown import telegramify
+from telegramify_markdown.interpreters import (
+    FileInterpreter,
+    MermaidInterpreter,
+    TextInterpreter,
+)
+from telegramify_markdown.type import ContentTypes
 
 from homeassistant.components.conversation import (
     DATA_COMPONENT,
@@ -33,8 +41,10 @@ from homeassistant.components.conversation import (
 from homeassistant.components.notify import DOMAIN as NOTIFY_DOMAIN
 from homeassistant.components.telegram_bot.const import (
     ATTR_CALLBACK_QUERY_ID,
+    ATTR_CAPTION,
     ATTR_CHAT_ACTION,
     ATTR_CHAT_ID,
+    ATTR_FILE,
     ATTR_FILE_ID,
     ATTR_FILE_MIME_TYPE,
     ATTR_FILE_PATH,
@@ -55,12 +65,15 @@ from homeassistant.components.telegram_bot.const import (
     EVENT_TELEGRAM_ATTACHMENT,
     EVENT_TELEGRAM_CALLBACK,
     EVENT_TELEGRAM_COMMAND,
+    EVENT_TELEGRAM_SENT,
     EVENT_TELEGRAM_TEXT,
     SERVICE_ANSWER_CALLBACK_QUERY,
     SERVICE_DOWNLOAD_FILE,
     SERVICE_EDIT_REPLYMARKUP,
     SERVICE_SEND_CHAT_ACTION,
+    SERVICE_SEND_DOCUMENT,
     SERVICE_SEND_MESSAGE,
+    SERVICE_SEND_PHOTO,
     SERVICE_SET_MESSAGE_REACTION,
     SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
 )
@@ -77,10 +90,14 @@ from homeassistant.helpers.intent import IntentResponseType
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_ATTACHMENTS,
     CONF_CONVERSATION_AGENT,
     CONF_CONVERSATION_TIMEOUT,
+    CONF_LATEX,
+    CONF_MERMAID,
     CONF_TELEGRAM_ENTRY,
     CONF_TELEGRAM_SUBENTRY,
+    CONF_TMPDIR,
     CONF_USER,
     DEFAULT_CONVERSATION_TIMEOUT,
     LOGGER,
@@ -101,130 +118,65 @@ def get_telegram_service_target(
     return {ATTR_CHAT_ID: chat_id}
 
 
-async def send_message(
-    hass: HomeAssistant,
-    chat_id: int,
-    message_thread_id: int,
-    message: str,
-    telegram_entry_id: str,
-    notify_entity_id: str | None = None,
-    context: Context | None = None,
-    data: dict[str, Any] | None = None,
-) -> dict:
-    """Send telegram message, taking care of formatting and length."""
-    if context is None:
-        context = Context()
+class TelegramMessageWatcher:
+    """Context management class to track sent messages."""
 
-    if len(message) > MAX_TELEGRAM_LENGTH:
-        messages = {"chats": []}
-        # Split the message in chunks
-        while len(message) > MAX_TELEGRAM_LENGTH:
-            # First try to split by paragraph
-            if (i := message.rfind("\n\n", 0, MAX_TELEGRAM_LENGTH)) > 0:
-                i += 2
-            # Then try to split by newline
-            elif (i := message.rfind("\n", 0, MAX_TELEGRAM_LENGTH)) > 0:
-                i += 1
-            # Then try to split by sentence
-            elif (
-                (i := message.rfind(". ", 0, MAX_TELEGRAM_LENGTH)) > 0
-                or (i := message.rfind("; ", 0, MAX_TELEGRAM_LENGTH)) > 0
-                or (i := message.rfind(", ", 0, MAX_TELEGRAM_LENGTH)) > 0
-            ):
-                i += 2
-            # Then try to split by word
-            elif (i := message.rfind(" ", 0, MAX_TELEGRAM_LENGTH)) > 0:
-                i += 1
-            # If all failed, split by position
-            else:
-                i = MAX_TELEGRAM_LENGTH
-
-            chunk_messages = await send_message(
-                hass,
-                chat_id,
-                message_thread_id,
-                message[:i],
-                telegram_entry_id,
-                notify_entity_id,
-                context,
-                data,
-            )
-            message = message[i:]
-            messages["chats"].extend(chunk_messages["chats"])
-
-        if len(message) > 0:
-            chunk_messages = await send_message(
-                hass,
-                chat_id,
-                message_thread_id,
-                message,
-                telegram_entry_id,
-                notify_entity_id,
-                context,
-                data,
-            )
-            messages["chats"].extend(chunk_messages["chats"])
-
-        return messages
-
-    if data is None:
-        data = {}
-    try:
-        # First try: markdownv2
-        return await hass.services.async_call(
-            TELEGRAM_DOMAIN,
-            SERVICE_SEND_MESSAGE,
-            {
-                **data,
-                ATTR_MESSAGE: markdownify(message),
-                **get_telegram_service_target(chat_id, notify_entity_id),
-                ATTR_MESSAGE_THREAD_ID: message_thread_id,
-                CONF_CONFIG_ENTRY_ID: telegram_entry_id,
-                ATTR_PARSER: "markdownv2",
-            },
-            blocking=True,
-            context=context,
-            return_response=True,
+    def __init__(self, hass: HomeAssistant, telegram_config_entry_id: str) -> None:
+        """Initialize the watcher."""
+        self.hass = hass
+        self.telegram_config_entry_id = telegram_config_entry_id
+        self._unregister_listener = self.hass.bus.async_listen(
+            EVENT_TELEGRAM_SENT,
+            self.async_handle_sent,
+            self.callback_sent_filter,
         )
-    except HomeAssistantError as err:
-        LOGGER.debug("MarkdownV2 failed: %s", err)
+        self.sent_messages: list[tuple[int, int]] = []
+        self.watchers: dict[tuple[int, int], asyncio.Future[None]] = {}
 
-    try:
-        # Second try: markdown
-        return await hass.services.async_call(
-            TELEGRAM_DOMAIN,
-            SERVICE_SEND_MESSAGE,
-            {
-                **data,
-                ATTR_MESSAGE: message,
-                **get_telegram_service_target(chat_id, notify_entity_id),
-                ATTR_MESSAGE_THREAD_ID: message_thread_id,
-                CONF_CONFIG_ENTRY_ID: telegram_entry_id,
-                ATTR_PARSER: "markdown",
-            },
-            blocking=True,
-            context=context,
-            return_response=True,
+    @callback
+    def callback_sent_filter(self, event_data: dict[str, Any]) -> bool:
+        """Filter sent events."""
+        return (
+            event_data.get("bot", {}).get(CONF_CONFIG_ENTRY_ID)
+            == self.telegram_config_entry_id
         )
-    except HomeAssistantError as err:
-        LOGGER.debug("Markdown failed: %s", err)
 
-    # Third try: plain_text
-    return await hass.services.async_call(
-        TELEGRAM_DOMAIN,
-        SERVICE_SEND_MESSAGE,
-        {
-            **data,
-            ATTR_MESSAGE: message,
-            **get_telegram_service_target(chat_id, notify_entity_id),
-            ATTR_MESSAGE_THREAD_ID: message_thread_id,
-            CONF_CONFIG_ENTRY_ID: telegram_entry_id,
-            ATTR_PARSER: "plain_text",
-        },
-        blocking=True,
-        context=context,
-        return_response=True,
-    )
+    async def async_handle_sent(self, event: Event) -> None:
+        """Handle sent events."""
+        message = (event.data[ATTR_CHAT_ID], event.data.get(ATTR_MESSAGE_ID))
+        self.sent_messages.append(message)
+        if message in self.watchers:
+            self.watchers[message].set_result(None)
+            del self.watchers[message]
+
+    def wait_message(self, chat_id: int, message_id: int) -> asyncio.Future[None]:
+        """Watch for a specific message to be sent."""
+        message = (chat_id, message_id)
+        if message in self.sent_messages:
+            future = asyncio.Future()
+            future.set_result(None)
+            return future
+        self.watchers[message] = asyncio.Future()
+        return self.watchers[message]
+
+    def async_cleanup(self) -> None:
+        """Clean up the watcher."""
+        if not self._unregister_listener:
+            return
+        self._unregister_listener()
+        self._unregister_listener = None
+
+    def __enter__(self) -> Self:
+        """Enter the context."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit the context."""
+        self.async_cleanup()
+
+    def __del__(self) -> None:
+        """Ensure cleanup on deletion."""
+        self.async_cleanup()
 
 
 @dataclass
@@ -249,6 +201,22 @@ class TelegramBotConversationHandler:
         self.hass = hass
         self.entry = entry
         self.telegram_entry_id = entry.data.get(CONF_TELEGRAM_ENTRY)
+
+        options = self.entry.options
+        self.interpreter_chain = [TextInterpreter()]
+        self.extra_prompt = (
+            "The user is interacting through Telegram. Markdown is supported. "
+        )
+        if options.get(CONF_ATTACHMENTS, True):
+            self.interpreter_chain.append(FileInterpreter())
+            self.extra_prompt += "Code blocks will be sent as files. "
+        if options.get(CONF_MERMAID, True):
+            self.interpreter_chain.append(MermaidInterpreter())
+            self.extra_prompt += "Mermaid is supported as inline code blocks. "
+        self.extra_prompt += (
+            f"If the response message starts with any of {REACTION_EMOJI}, "
+            "it will be added as a reaction to the user message."
+        )
 
         telegram_entry = hass.config_entries.async_get_entry(self.telegram_entry_id)
 
@@ -329,16 +297,115 @@ class TelegramBotConversationHandler:
             )
         )
 
+    async def send_message(
+        self,
+        hass: HomeAssistant,
+        chat_id: int,
+        message_thread_id: int,
+        message: str,
+        context: Context | None = None,
+    ) -> dict[str, list[dict[str, int]]]:
+        """Send telegram message, taking care of formatting and length."""
+        if context is None:
+            context = Context()
+
+        messages = {"chats": []}
+        created_files: list[Path] = []
+
+        def save_file(file_name: str, file_data: bytes) -> Path:
+            """Save temp file."""
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                prefix=Path(file_name).stem,
+                suffix=Path(file_name).suffix,
+                dir=self.entry.options.get(CONF_TMPDIR),
+                delete=False,
+            ) as temp_file:
+                temp_file.write(file_data)
+                filename = Path(temp_file.name)
+                created_files.append(filename)
+                return filename
+
+        try:
+            with TelegramMessageWatcher(hass, self.telegram_entry_id) as watcher:
+                for item in await telegramify(
+                    content=message,
+                    interpreters_use=self.interpreter_chain,
+                    normalize_whitespace=True,
+                    latex_escape=self.entry.options.get(CONF_LATEX, True),
+                    max_word_count=MAX_TELEGRAM_LENGTH,
+                ):
+                    if item.content_type == ContentTypes.TEXT:
+                        item_messages = await hass.services.async_call(
+                            TELEGRAM_DOMAIN,
+                            SERVICE_SEND_MESSAGE,
+                            {
+                                ATTR_MESSAGE: item.content,
+                                **get_telegram_service_target(
+                                    chat_id, self.chat_config[chat_id].notify_entity_id
+                                ),
+                                ATTR_MESSAGE_THREAD_ID: message_thread_id,
+                                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                ATTR_PARSER: "markdownv2",
+                            },
+                            blocking=True,
+                            context=context,
+                            return_response=True,
+                        )
+                    elif item.content_type in (ContentTypes.PHOTO, ContentTypes.FILE):
+                        item_messages = await hass.services.async_call(
+                            TELEGRAM_DOMAIN,
+                            SERVICE_SEND_PHOTO
+                            if item.content_type == ContentTypes.PHOTO
+                            else SERVICE_SEND_DOCUMENT,
+                            {
+                                ATTR_FILE: (
+                                    await hass.async_add_executor_job(
+                                        save_file, item.file_name, item.file_data
+                                    )
+                                ).as_posix(),
+                                ATTR_CAPTION: item.caption,
+                                **get_telegram_service_target(
+                                    chat_id, self.chat_config[chat_id].notify_entity_id
+                                ),
+                                ATTR_MESSAGE_THREAD_ID: message_thread_id,
+                                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                ATTR_PARSER: "markdownv2",
+                            },
+                            blocking=True,
+                            context=context,
+                            return_response=True,
+                        )
+
+                    messages["chats"].extend(item_messages["chats"])
+                    await asyncio.wait_for(
+                        asyncio.gather(
+                            *(
+                                watcher.wait_message(
+                                    msg[ATTR_CHAT_ID], msg[ATTR_MESSAGE_ID]
+                                )
+                                for msg in item_messages["chats"]
+                            )
+                        ),
+                        timeout=10.0,
+                    )
+        finally:
+            if created_files:
+                await hass.async_add_executor_job(
+                    lambda: [file.unlink(missing_ok=True) for file in created_files]
+                )
+
+        return messages
+
     async def async_handle_text(self, event: Event) -> None:
         """Handle text and attachment events."""
         conversation_id = f"telegram_{event.data[ATTR_CHAT_ID]}"
         if event.data.get(ATTR_MESSAGE_THREAD_ID) is not None:
             conversation_id += f"_{event.data[ATTR_MESSAGE_THREAD_ID]}"
         context = event.context
-        chat_config = self.chat_config.get(event.data[ATTR_CHAT_ID])
+        chat_config = self.chat_config[event.data[ATTR_CHAT_ID]]
         if context.user_id is None:
-            if chat_config:
-                context.user_id = chat_config.user_id
+            context.user_id = chat_config.user_id
 
         current_content = ""
         current_role = None
@@ -360,7 +427,7 @@ class TelegramBotConversationHandler:
                         CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
                         **get_telegram_service_target(
                             event.data[ATTR_CHAT_ID],
-                            chat_config.notify_entity_id if chat_config else None,
+                            chat_config.notify_entity_id,
                         ),
                         ATTR_MESSAGE_THREAD_ID: event.data.get(ATTR_MESSAGE_THREAD_ID)
                         or 0,
@@ -370,15 +437,11 @@ class TelegramBotConversationHandler:
                 )
 
                 if current_role == "assistant" and current_content:
-                    await send_message(
+                    await self.send_message(
                         self.hass,
                         chat_id=event.data[ATTR_CHAT_ID],
                         message_thread_id=event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
                         message=current_content,
-                        telegram_entry_id=self.telegram_entry_id,
-                        notify_entity_id=(
-                            chat_config.notify_entity_id if chat_config else None
-                        ),
                         context=context,
                     )
                 current_content = ""
@@ -468,7 +531,7 @@ class TelegramBotConversationHandler:
                 conversation_id=session.conversation_id,
                 context=context,
                 agent_id=self.chat_config[event.data[ATTR_CHAT_ID]].agent_id,
-                extra_system_prompt=f"The user is interacting through Telegram. Markdown is supported. If the response message starts with any of {REACTION_EMOJI}, it will be added as a reaction to the user message.",
+                extra_system_prompt=self.extra_prompt,
             )
             # Flush any remaining delta
             chat_log_delta_listener(chat_log, {"role": None})
@@ -482,15 +545,11 @@ class TelegramBotConversationHandler:
         )
 
         if conversation_result.response.response_type == IntentResponseType.ERROR:
-            await send_message(
+            await self.send_message(
                 self.hass,
                 chat_id=event.data[ATTR_CHAT_ID],
                 message_thread_id=event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
                 message=conversation_result.response.speech["plain"]["speech"],
-                telegram_entry_id=self.telegram_entry_id,
-                notify_entity_id=(
-                    chat_config.notify_entity_id if chat_config else None
-                ),
                 context=context,
             )
 
@@ -579,43 +638,52 @@ class TelegramBotConversationHandler:
                         selected_agent,
                         chat_id,
                     )
-                    await send_message(
+                    await self.send_message(
                         self.hass,
                         chat_id=chat_id,
                         message_thread_id=message_thread_id,
                         message=f"Conversation agent switched to `{
                             agents.get(selected_agent, selected_agent)
                         }`",
-                        telegram_entry_id=self.telegram_entry_id,
-                        notify_entity_id=self.chat_config[chat_id].notify_entity_id,
                         context=context,
                     )
                 else:
-                    await send_message(
+                    messages = await self.send_message(
                         self.hass,
                         chat_id=chat_id,
                         message_thread_id=message_thread_id,
                         message=f"Current conversation agent: `{
                             agents.get(current_agent, current_agent)
                         }`",
-                        telegram_entry_id=self.telegram_entry_id,
-                        notify_entity_id=self.chat_config[chat_id].notify_entity_id,
                         context=context,
-                        data={
-                            ATTR_KEYBOARD_INLINE: [
-                                [(agent_name, f"/model {agent_id}")]
-                                for agent_id, agent_name in agents.items()
-                            ]
-                        },
                     )
+                    if messages["chats"]:
+                        msg = messages["chats"][-1]
+                        config = self.chat_config[msg[ATTR_CHAT_ID]]
+                        await self.hass.services.async_call(
+                            TELEGRAM_DOMAIN,
+                            SERVICE_EDIT_REPLYMARKUP,
+                            {
+                                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                **get_telegram_service_target(
+                                    msg[ATTR_CHAT_ID],
+                                    config.notify_entity_id,
+                                ),
+                                ATTR_MESSAGE_ID: msg[ATTR_MESSAGE_ID],
+                                ATTR_KEYBOARD_INLINE: [
+                                    [(agent_name, f"/model {agent_id}")]
+                                    for agent_id, agent_name in agents.items()
+                                ],
+                            },
+                            context=context,
+                        )
 
     async def async_handle_command(self, event: Event) -> None:
         """Handle command events."""
         context = event.context
         if context.user_id is None:
-            config = self.chat_config.get(event.data[ATTR_CHAT_ID])
-            if config:
-                context.user_id = config.user_id
+            config = self.chat_config[event.data[ATTR_CHAT_ID]]
+            context.user_id = config.user_id
         try:
             await self.async_process_command(
                 event.data[ATTR_CHAT_ID],
@@ -642,10 +710,9 @@ class TelegramBotConversationHandler:
         """Handle callback query events."""
         LOGGER.debug("callback_event data: %s", event.data)
         context = event.context
-        config = self.chat_config.get(event.data[ATTR_CHAT_ID])
+        config = self.chat_config[event.data[ATTR_CHAT_ID]]
         if context.user_id is None:
-            if config:
-                context.user_id = config.user_id
+            context.user_id = config.user_id
         args = event.data.get("data", "").split(" ")
 
         try:
