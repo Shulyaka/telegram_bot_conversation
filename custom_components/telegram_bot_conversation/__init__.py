@@ -378,7 +378,7 @@ class TelegramBotConversationHandler:
                         )
 
                     messages["chats"].extend(item_messages["chats"])
-                    await asyncio.waitfor(
+                    await asyncio.wait_for(
                         asyncio.gather(
                             *(
                                 watcher.wait_message(
