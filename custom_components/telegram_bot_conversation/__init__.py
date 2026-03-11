@@ -207,10 +207,10 @@ class TelegramBotConversationHandler:
         self.extra_prompt = (
             "The user is interacting through Telegram. Markdown is supported. "
         )
-        if options.get(CONF_ATTACHMENTS):
+        if options.get(CONF_ATTACHMENTS, True):
             self.interpreter_chain.append(FileInterpreter())
             self.extra_prompt += "Code blocks will be sent as files. "
-        if options.get(CONF_MERMAID):
+        if options.get(CONF_MERMAID, True):
             self.interpreter_chain.append(MermaidInterpreter())
             self.extra_prompt += "Mermaid is supported as inline code blocks. "
         self.extra_prompt += (
@@ -396,7 +396,7 @@ class TelegramBotConversationHandler:
                         )
         finally:
             if created_files:
-                hass.async_add_executor_job(
+                await hass.async_add_executor_job(
                     lambda: [file.unlink(missing_ok=True) for file in created_files]
                 )
 
