@@ -56,13 +56,15 @@
                     "attachments": "Attachments",
                     "conversation_timeout": "Conversation timeout",
                     "latex": "LaTeX",
-                    "mermaid": "Mermaid"
+                    "mermaid": "Mermaid",
+                    "tmpdir": "Temporary directory"
                 },
                 "data_description": {
-                    "attachments": "Send code blocks as files",
-                    "conversation_timeout": "Overwrite default conversation timeout for context management. The bot will ignore message history if the chat is interrupted for longer than this time",
-                    "latex": "Convert LaTeX to Unicode",
-                    "mermaid": "Render Mermaid diagrams in messages as images"
+                    "attachments": "Send code blocks as files.",
+                    "conversation_timeout": "Overwrite default conversation timeout for context management. The bot will ignore message history if the chat is interrupted for longer than this time.",
+                    "latex": "Convert LaTeX to Unicode.",
+                    "mermaid": "Render Mermaid diagrams in messages as images.",
+                    "tmpdir": "Directory to store temporary files while they are being uploaded to Telegram. You can add a new directory in configuration.yaml as allowlist_external_dirs"
                 },
                 "description": "Configure options for Telegram Bot conversation."
             }

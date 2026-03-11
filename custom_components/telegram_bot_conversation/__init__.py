@@ -97,6 +97,7 @@ from .const import (
     CONF_MERMAID,
     CONF_TELEGRAM_ENTRY,
     CONF_TELEGRAM_SUBENTRY,
+    CONF_TMPDIR,
     CONF_USER,
     DEFAULT_CONVERSATION_TIMEOUT,
     LOGGER,
@@ -317,13 +318,13 @@ class TelegramBotConversationHandler:
                 mode="wb",
                 prefix=Path(file_name).stem,
                 suffix=Path(file_name).suffix,
-                dir=hass.config.path("www"),
+                dir=self.entry.options.get(CONF_TMPDIR),
                 delete=False,
             ) as temp_file:
                 temp_file.write(file_data)
-                file_name = Path(temp_file.name)
-                created_files.append(file_name)
-                return file_name
+                filename = Path(temp_file.name)
+                created_files.append(filename)
+                return filename
 
         try:
             with TelegramMessageWatcher(hass, self.telegram_entry_id) as watcher:

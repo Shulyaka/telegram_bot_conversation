@@ -15,6 +15,7 @@ CONF_USER = "user_id"
 CONF_ATTACHMENTS = "attachments"
 CONF_LATEX = "latex"
 CONF_MERMAID = "mermaid"
+CONF_TMPDIR = "tmpdir"
 
 
 DEFAULT_CONVERSATION_TIMEOUT = timedelta(hours=24)
