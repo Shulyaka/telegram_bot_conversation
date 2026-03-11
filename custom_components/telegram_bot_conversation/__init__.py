@@ -352,15 +352,6 @@ class TelegramBotConversationHandler:
                             context=context,
                             return_response=True,
                         )
-                        messages["chats"].extend(item_messages["chats"])
-                        await asyncio.gather(
-                            *(
-                                watcher.wait_message(
-                                    msg[ATTR_CHAT_ID], msg[ATTR_MESSAGE_ID]
-                                )
-                                for msg in item_messages["chats"]
-                            )
-                        )
                     elif item.content_type in (ContentTypes.PHOTO, ContentTypes.FILE):
                         item_messages = await hass.services.async_call(
                             TELEGRAM_DOMAIN,
@@ -385,15 +376,19 @@ class TelegramBotConversationHandler:
                             context=context,
                             return_response=True,
                         )
-                        messages["chats"].extend(item_messages["chats"])
-                        await asyncio.gather(
+
+                    messages["chats"].extend(item_messages["chats"])
+                    await asyncio.waitfor(
+                        asyncio.gather(
                             *(
                                 watcher.wait_message(
                                     msg[ATTR_CHAT_ID], msg[ATTR_MESSAGE_ID]
                                 )
                                 for msg in item_messages["chats"]
                             )
-                        )
+                        ),
+                        timeout=10.0,
+                    )
         finally:
             if created_files:
                 await hass.async_add_executor_job(
