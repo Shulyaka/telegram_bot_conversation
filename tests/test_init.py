@@ -23,7 +23,7 @@ async def test_handler_resolves_notify_entity_id(
     mock_telegram_config_entry,
     mock_config_entry,
 ) -> None:
-    """Test that chat config stores the telegram notify entity ID."""
+    """Test that chat handler stores the telegram notify entity ID."""
     handler = TelegramBotConversationHandler(hass, mock_config_entry)
     entity_registry = er.async_get(hass)
 
@@ -39,10 +39,10 @@ async def test_handler_resolves_notify_entity_id(
         and entity_entry.entity_id.startswith("notify.")
     )
 
-    chat_config = handler.chat_config[telegram_subentry.data[CONF_CHAT_ID]]
+    chat_handler = handler.chat_handlers[telegram_subentry.data[CONF_CHAT_ID]]
 
-    assert chat_config.notify_entity_id == notify_entity_id
-    assert chat_config.subentry_id == next(
+    assert chat_handler.notify_entity_id == notify_entity_id
+    assert chat_handler.subentry_id == next(
         subentry.subentry_id
         for subentry in mock_config_entry.subentries.values()
         if subentry.data[CONF_TELEGRAM_SUBENTRY] == telegram_subentry_id
@@ -60,6 +60,7 @@ async def test_send_message_uses_notify_entity_id(
     # Pick the first chat to test with
     _, telegram_subentry = next(iter(mock_telegram_config_entry.subentries.items()))
     chat_id = telegram_subentry.data[CONF_CHAT_ID]
+    chat_handler = handler.chat_handlers[chat_id]
 
     calls = async_mock_service(
         hass,
@@ -68,11 +69,9 @@ async def test_send_message_uses_notify_entity_id(
         response={"chats": []},
     )
 
-    await handler.send_message(
-        hass,
-        chat_id=chat_id,
-        message_thread_id=0,
+    await chat_handler.send_message(
         message="Hello",
+        message_thread_id=0,
     )
 
     assert len(calls) == 1
@@ -80,7 +79,7 @@ async def test_send_message_uses_notify_entity_id(
     assert call.domain == TELEGRAM_DOMAIN
     assert call.service == SERVICE_SEND_MESSAGE
     assert call.data[ATTR_MESSAGE] == "Hello\n"
-    assert call.data[ATTR_ENTITY_ID] == [handler.chat_config[chat_id].notify_entity_id]
+    assert call.data[ATTR_ENTITY_ID] == [chat_handler.notify_entity_id]
     assert ATTR_CHAT_ID not in call.data
     assert call.data[ATTR_MESSAGE_THREAD_ID] == 0
     assert call.data[CONF_CONFIG_ENTRY_ID] == mock_telegram_config_entry.entry_id
