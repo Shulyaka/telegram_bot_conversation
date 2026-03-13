@@ -311,7 +311,11 @@ class TelegramChatHandler:
             f"conversation_{conversation_id}",
         )
         self.conversation_tasks[conversation_id].add_done_callback(
-            lambda task: self.conversation_tasks.pop(conversation_id, None) if self.conversation_tasks.get(conversation_id) is task else None
+            lambda task: (
+                self.conversation_tasks.pop(conversation_id, None)
+                if self.conversation_tasks.get(conversation_id) is task
+                else None
+            )
         )
 
     async def async_process_message(self, event: Event, conversation_id: str) -> None:
