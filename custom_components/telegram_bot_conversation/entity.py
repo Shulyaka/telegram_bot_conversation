@@ -159,7 +159,7 @@ class TelegramMessageWatcher:
 
 @dataclass
 class ConversationConfig:
-    """Per-conversation configuration."""
+    """Per-conversation runtime state tracked across messages."""
 
     conversation_id: str | None
     task: asyncio.Task | None
@@ -306,8 +306,9 @@ class TelegramChatHandler:
 
     async def async_handle_text(self, event: Event) -> None:
         """Handle text and attachment events."""
+        thread_id = event.data.get(ATTR_MESSAGE_THREAD_ID) or 0
         current_conversation = self.conversations.setdefault(
-            event.data.get(ATTR_MESSAGE_THREAD_ID) or 0, ConversationConfig(None, None)
+            thread_id, ConversationConfig(None, None)
         )
 
         if (task := current_conversation.task) and not task.done():
@@ -315,10 +316,19 @@ class TelegramChatHandler:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
-        current_conversation.task = self.hass.async_create_task(
+        task_name = f"telegram_conversation_{self.chat_id}_{thread_id}"
+        task = self.hass.async_create_task(
             self.async_process_message(event, current_conversation),
-            f"conversation_{current_conversation.conversation_id}",
+            task_name,
         )
+        current_conversation.task = task
+
+        def _clear_task(_task: asyncio.Task) -> None:
+            """Clear reference to completed task to avoid retaining tracebacks."""
+            if current_conversation.task is _task:
+                current_conversation.task = None
+
+        task.add_done_callback(_clear_task)
 
     async def async_process_message(
         self, event: Event, current_conversation: ConversationConfig
