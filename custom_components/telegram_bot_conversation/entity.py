@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 import contextlib
+from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 import tempfile
@@ -156,6 +157,14 @@ class TelegramMessageWatcher:
         self.async_cleanup()
 
 
+@dataclass
+class ConversationConfig:
+    """Per-conversation configuration."""
+
+    conversation_id: str | None
+    task: asyncio.Task | None
+
+
 class TelegramChatHandler:
     """Handle conversation logic for a single Telegram chat."""
 
@@ -179,7 +188,7 @@ class TelegramChatHandler:
         self.agent_id = agent_id
         self.notify_entity_id = notify_entity_id
         self.subentry_id = subentry_id
-        self.conversation_tasks: dict[str, asyncio.Task] = {}
+        self.conversations: dict[int, ConversationConfig] = {}
 
         options = entry.options
         self.interpreter_chain: list[BaseInterpreter] = [TextInterpreter()]
@@ -297,25 +306,18 @@ class TelegramChatHandler:
 
     async def async_handle_text(self, event: Event) -> None:
         """Handle text and attachment events."""
-        conversation_id = f"telegram_{self.chat_id}"
-        if event.data.get(ATTR_MESSAGE_THREAD_ID) is not None:
-            conversation_id += f"_{event.data[ATTR_MESSAGE_THREAD_ID]}"
+        current_conversation = self.conversations.setdefault(
+            event.data.get(ATTR_MESSAGE_THREAD_ID) or 0, ConversationConfig(None, None)
+        )
 
-        if task := self.conversation_tasks.get(conversation_id):
+        if (task := current_conversation.task) and not task.done():
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
-        self.conversation_tasks[conversation_id] = self.hass.async_create_task(
-            self.async_process_message(event, conversation_id),
-            f"conversation_{conversation_id}",
-        )
-        self.conversation_tasks[conversation_id].add_done_callback(
-            lambda task: (
-                self.conversation_tasks.pop(conversation_id, None)
-                if self.conversation_tasks.get(conversation_id) is task
-                else None
-            )
+        current_conversation.task = self.hass.async_create_task(
+            self.async_process_message(event, current_conversation.conversation_id),
+            f"conversation_{current_conversation.conversation_id}",
         )
 
     async def async_process_message(self, event: Event, conversation_id: str) -> None:
@@ -403,6 +405,9 @@ class TelegramChatHandler:
                 chat_log_delta_listener=chat_log_delta_listener,
             ) as chat_log,
         ):
+            self.conversations[event.data.get(ATTR_MESSAGE_THREAD_ID) or 0] = (
+                session.conversation_id
+            )
             if event.data.get(ATTR_FILE_ID):
                 file_path = Path(
                     (
@@ -587,6 +592,22 @@ class TelegramChatHandler:
                             },
                             context=context,
                         )
+            case "/new":
+                if (
+                    (current_conversation := self.conversations.get(message_thread_id))
+                    and (task := current_conversation.task)
+                    and not task.done()
+                ):
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
+
+                self.conversations.pop(message_thread_id, None)
+                await self.send_message(
+                    message="New conversation started.",
+                    message_thread_id=message_thread_id,
+                    context=context,
+                )
 
     async def async_handle_command(self, event: Event) -> None:
         """Handle command events."""
