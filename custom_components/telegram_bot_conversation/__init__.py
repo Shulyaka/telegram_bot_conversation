@@ -164,7 +164,7 @@ class TelegramBotConversationHandler:
     def command_events_filter(self, event_data: Mapping[str, Any]) -> bool:
         """Filter command events."""
         return (
-            event_data.get("command") == "/model"
+            event_data.get("command") in ["/model", "/new"]
             and event_data.get("bot", {}).get(CONF_CONFIG_ENTRY_ID)
             == self.telegram_entry_id
             and event_data.get(ATTR_CHAT_ID) in self.chat_handlers
@@ -179,7 +179,7 @@ class TelegramBotConversationHandler:
     def callback_events_filter(self, event_data: Mapping[str, Any]) -> bool:
         """Filter callback query events."""
         return (
-            event_data.get("data", "").startswith("/model")
+            event_data.get("data", "").startswith(("/model", "/new"))
             and event_data.get("bot", {}).get(CONF_CONFIG_ENTRY_ID)
             == self.telegram_entry_id
             and event_data.get(ATTR_CHAT_ID) in self.chat_handlers
