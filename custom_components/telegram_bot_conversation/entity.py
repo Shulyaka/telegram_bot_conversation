@@ -316,11 +316,13 @@ class TelegramChatHandler:
                 await task
 
         current_conversation.task = self.hass.async_create_task(
-            self.async_process_message(event, current_conversation.conversation_id),
+            self.async_process_message(event, current_conversation),
             f"conversation_{current_conversation.conversation_id}",
         )
 
-    async def async_process_message(self, event: Event, conversation_id: str) -> None:
+    async def async_process_message(
+        self, event: Event, current_conversation: ConversationConfig
+    ) -> None:
         """Handle conversation task."""
         context = event.context
         if context.user_id is None:
@@ -398,16 +400,16 @@ class TelegramChatHandler:
             )
 
         with (
-            async_get_chat_session(self.hass, conversation_id) as session,
+            async_get_chat_session(
+                self.hass, current_conversation.conversation_id
+            ) as session,
             async_get_chat_log(
                 self.hass,
                 session,
                 chat_log_delta_listener=chat_log_delta_listener,
             ) as chat_log,
         ):
-            self.conversations[event.data.get(ATTR_MESSAGE_THREAD_ID) or 0] = (
-                session.conversation_id
-            )
+            current_conversation.conversation_id = session.conversation_id
             if event.data.get(ATTR_FILE_ID):
                 file_path = Path(
                     (
