@@ -398,9 +398,7 @@ class TelegramChatHandler:
                         attachments=[
                             Attachment(
                                 media_content_id=f"media-source://{TELEGRAM_DOMAIN}/{event.data.get(ATTR_FILE_ID)}",
-                                mime_type=event.data.get(
-                                    ATTR_FILE_MIME_TYPE, "image/jpeg"
-                                ),
+                                mime_type=event.data.get(ATTR_FILE_MIME_TYPE),
                                 path=file_path,
                             )
                         ],
