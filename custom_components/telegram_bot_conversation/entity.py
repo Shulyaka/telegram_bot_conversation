@@ -301,17 +301,17 @@ class TelegramChatHandler:
         if event.data.get(ATTR_MESSAGE_THREAD_ID) is not None:
             conversation_id += f"_{event.data[ATTR_MESSAGE_THREAD_ID]}"
 
-        if conversation_id in self.conversation_tasks:
-            self.conversation_tasks[conversation_id].cancel()
+        if task := self.conversation_tasks.get(conversation_id):
+            task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await self.conversation_tasks[conversation_id]
+                await task
 
         self.conversation_tasks[conversation_id] = self.hass.async_create_task(
             self.async_process_message(event, conversation_id),
             f"conversation_{conversation_id}",
         )
         self.conversation_tasks[conversation_id].add_done_callback(
-            lambda task: self.conversation_tasks.pop(conversation_id, None)
+            lambda task: self.conversation_tasks.pop(conversation_id, None) if self.conversation_tasks.get(conversation_id) is task else None
         )
 
     async def async_process_message(self, event: Event, conversation_id: str) -> None:
