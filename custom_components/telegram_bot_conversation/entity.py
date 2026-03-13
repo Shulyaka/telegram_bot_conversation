@@ -353,6 +353,12 @@ class TelegramChatHandler:
         ) -> None:
             """Handle chat log delta."""
             async with current_conversation.lock:
+                if (
+                    current_conversation.task is None
+                    or current_conversation.task.done()
+                ):
+                    return
+
                 LOGGER.debug("Chat log delta: %s", delta)
                 nonlocal current_content, current_role
                 if "role" in delta:
