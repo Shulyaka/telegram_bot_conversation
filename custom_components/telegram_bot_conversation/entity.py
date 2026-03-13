@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
+import contextlib
 from datetime import timedelta
 from pathlib import Path
 import tempfile
@@ -178,6 +179,7 @@ class TelegramChatHandler:
         self.agent_id = agent_id
         self.notify_entity_id = notify_entity_id
         self.subentry_id = subentry_id
+        self.conversation_tasks: dict[str, asyncio.Task] = {}
 
         options = entry.options
         self.interpreter_chain: list[BaseInterpreter] = [TextInterpreter()]
@@ -298,10 +300,27 @@ class TelegramChatHandler:
         conversation_id = f"telegram_{self.chat_id}"
         if event.data.get(ATTR_MESSAGE_THREAD_ID) is not None:
             conversation_id += f"_{event.data[ATTR_MESSAGE_THREAD_ID]}"
+
+        if conversation_id in self.conversation_tasks:
+            self.conversation_tasks[conversation_id].cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self.conversation_tasks[conversation_id]
+
+        self.conversation_tasks[conversation_id] = self.hass.async_create_task(
+            self.async_process_message(event, conversation_id),
+            f"conversation_{conversation_id}",
+        )
+        self.conversation_tasks[conversation_id].add_done_callback(
+            lambda task: self.conversation_tasks.pop(conversation_id, None)
+        )
+
+    async def async_process_message(self, event: Event, conversation_id: str) -> None:
+        """Handle conversation task."""
         context = event.context
         if context.user_id is None:
             context.user_id = self.user_id
 
+        error: asyncio.CancelledError | None = None
         current_content = ""
         current_role = None
 
@@ -310,26 +329,31 @@ class TelegramChatHandler:
             matches = [e for e in REACTION_EMOJI if content.lstrip().startswith(e)]
             return max(matches, key=len) if matches else None
 
-        async def async_chat_log_delta_listener(chat_log: ChatLog, delta: dict) -> None:
+        async def async_chat_log_delta_listener(
+            chat_log: ChatLog, delta: dict[str, Any]
+        ) -> None:
             """Handle chat log delta."""
             LOGGER.debug("Chat log delta: %s", delta)
             nonlocal current_content, current_role
             if "role" in delta:
-                await self.hass.services.async_call(
-                    TELEGRAM_DOMAIN,
-                    SERVICE_SEND_CHAT_ACTION,
-                    {
-                        CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                        **get_telegram_service_target(
-                            self.chat_id,
-                            self.notify_entity_id,
-                        ),
-                        ATTR_MESSAGE_THREAD_ID: event.data.get(ATTR_MESSAGE_THREAD_ID)
-                        or 0,
-                        ATTR_CHAT_ACTION: CHAT_ACTION_TYPING,
-                    },
-                    context=context,
-                )
+                if delta["role"] == "assistant":
+                    await self.hass.services.async_call(
+                        TELEGRAM_DOMAIN,
+                        SERVICE_SEND_CHAT_ACTION,
+                        {
+                            CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                            **get_telegram_service_target(
+                                self.chat_id,
+                                self.notify_entity_id,
+                            ),
+                            ATTR_MESSAGE_THREAD_ID: event.data.get(
+                                ATTR_MESSAGE_THREAD_ID
+                            )
+                            or 0,
+                            ATTR_CHAT_ACTION: CHAT_ACTION_TYPING,
+                        },
+                        context=context,
+                    )
 
                 if current_role == "assistant" and current_content:
                     await self.send_message(
@@ -339,6 +363,7 @@ class TelegramChatHandler:
                     )
                 current_content = ""
                 current_role = delta["role"]
+
             if "content" in delta and current_role == "assistant":
                 if not current_content and (reaction := get_reaction(delta["content"])):
                     await self.hass.services.async_call(
@@ -359,7 +384,7 @@ class TelegramChatHandler:
                     current_content += delta["content"]
 
         @callback
-        def chat_log_delta_listener(chat_log: ChatLog, delta: dict) -> None:
+        def chat_log_delta_listener(chat_log: ChatLog, delta: dict[str, Any]) -> None:
             """Handle chat log delta."""
             self.hass.async_create_task(
                 async_chat_log_delta_listener(chat_log, delta),
@@ -418,14 +443,18 @@ class TelegramChatHandler:
             else:
                 input_text = event.data.get(ATTR_TEXT) or ""
 
-            conversation_result = await async_converse(
-                self.hass,
-                text=input_text,
-                conversation_id=session.conversation_id,
-                context=context,
-                agent_id=self.agent_id,
-                extra_system_prompt=self.extra_prompt,
-            )
+            try:
+                conversation_result = await async_converse(
+                    self.hass,
+                    text=input_text,
+                    conversation_id=session.conversation_id,
+                    context=context,
+                    agent_id=self.agent_id,
+                    extra_system_prompt=self.extra_prompt,
+                )
+            except asyncio.CancelledError as e:
+                error = e
+
             # Flush any remaining delta
             chat_log_delta_listener(chat_log, {"role": None})
 
@@ -436,6 +465,9 @@ class TelegramChatHandler:
         session.last_updated = (
             dt_util.utcnow() + timedelta(**timeout) - CONVERSATION_TIMEOUT
         )
+
+        if error:
+            raise error
 
         if conversation_result.response.response_type == IntentResponseType.ERROR:
             await self.send_message(
