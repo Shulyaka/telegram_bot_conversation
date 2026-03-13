@@ -15,6 +15,7 @@ This is a Home Assistant custom integration that allows you to use the [Telegram
 - Per-chat configuration of HA User mapping and conversation agent
 - Extended conversation history timeout
 - Easy switch between agents with `/model` command
+- Start a conversation from scratch with `/new` command
 - Full Markdown support
 - Code blocks can be sent as files, mermaid diagrams can be rendered into images, and LaTeX symbols can be translated into Unicode
 - Attachments are supported if your agent supports them (usually only images and pdf, and only for the last message)
