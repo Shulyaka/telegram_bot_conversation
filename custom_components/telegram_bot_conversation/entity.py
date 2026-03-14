@@ -361,7 +361,7 @@ class TelegramChatHandler:
             chat_log: ChatLog, delta: dict[str, Any]
         ) -> None:
             """Handle chat log delta."""
-            nonlocal current_content, current_conversation
+            nonlocal current_content
             async with current_conversation.delta_lock:
                 if (
                     current_conversation.task is None
