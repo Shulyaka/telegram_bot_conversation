@@ -21,6 +21,7 @@ from telegramify_markdown.interpreters import (
 from telegramify_markdown.type import ContentTypes
 
 from homeassistant.components.conversation import (
+    AssistantContentDeltaDict,
     Attachment,
     ChatLog,
     ConversationEntity,
@@ -29,7 +30,7 @@ from homeassistant.components.conversation import (
     async_get_chat_log,
 )
 from homeassistant.components.conversation.agent_manager import get_agent_manager
-from homeassistant.components.conversation.const import DATA_COMPONENT
+from homeassistant.components.conversation.const import DATA_COMPONENT, ChatLogEventType
 from homeassistant.components.telegram_bot.const import (
     ATTR_CALLBACK_QUERY_ID,
     ATTR_CAPTION,
@@ -163,7 +164,8 @@ class ConversationConfig:
 
     conversation_id: str | None
     task: asyncio.Task | None
-    lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
+    delta_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
+    content_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
 
 
 class TelegramChatHandler:
@@ -328,6 +330,14 @@ class TelegramChatHandler:
             """Clear reference to completed task to avoid retaining tracebacks."""
             if current_conversation.task is _task:
                 current_conversation.task = None
+            if (err := _task.exception()) and isinstance(err, Exception):
+                LOGGER.error(
+                    "Error in conversation task for chat_id=%s, thread_id=%s: %s",
+                    self.chat_id,
+                    thread_id,
+                    err,
+                    exc_info=err,
+                )
 
         task.add_done_callback(_clear_task)
 
@@ -340,8 +350,7 @@ class TelegramChatHandler:
             context.user_id = self.user_id
 
         error: asyncio.CancelledError | None = None
-        current_content = ""
-        current_role = None
+        current_content: AssistantContentDeltaDict | None = None
 
         def get_reaction(content: str) -> str | None:
             """Extract reaction from content if it starts with a known reaction emoji."""
@@ -352,7 +361,8 @@ class TelegramChatHandler:
             chat_log: ChatLog, delta: dict[str, Any]
         ) -> None:
             """Handle chat log delta."""
-            async with current_conversation.lock:
+            nonlocal current_content
+            async with current_conversation.delta_lock:
                 if (
                     current_conversation.task is None
                     or current_conversation.task.done()
@@ -360,9 +370,27 @@ class TelegramChatHandler:
                     return
 
                 LOGGER.debug("Chat log delta: %s", delta)
-                nonlocal current_content, current_role
                 if "role" in delta:
+                    if current_content:
+                        await self.async_handle_chat_log_event(
+                            thread_id=event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
+                            current_conversation=current_conversation,
+                            event_type=ChatLogEventType.CONTENT_ADDED,
+                            data={"content": current_content},
+                            context=context,
+                        )
                     if delta["role"] == "assistant":
+                        current_content = AssistantContentDeltaDict(
+                            role="assistant",
+                            content="",
+                            thinking_content="",
+                            tool_calls=[],
+                        )
+                    else:
+                        current_content = None
+
+                    if current_content:
+                        # Send typing action at the beginning of each assistant response
                         await self.hass.services.async_call(
                             TELEGRAM_DOMAIN,
                             SERVICE_SEND_CHAT_ACTION,
@@ -381,44 +409,55 @@ class TelegramChatHandler:
                             context=context,
                         )
 
-                    if current_role == "assistant" and current_content:
-                        await self.send_message(
-                            message=current_content,
-                            message_thread_id=event.data.get(ATTR_MESSAGE_THREAD_ID)
-                            or 0,
-                            context=context,
-                        )
-                    current_content = ""
-                    current_role = delta["role"]
-
-                if "content" in delta and current_role == "assistant":
-                    if not current_content and (
-                        reaction := get_reaction(delta["content"])
-                    ):
-                        await self.hass.services.async_call(
-                            TELEGRAM_DOMAIN,
-                            SERVICE_SET_MESSAGE_REACTION,
-                            {
-                                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                                ATTR_MESSAGE_ID: event.data.get(ATTR_MSGID) or "last",
-                                ATTR_CHAT_ID: self.chat_id,
-                                ATTR_REACTION: reaction,
-                            },
-                            context=context,
-                        )
-                        current_content = (
-                            delta["content"].lstrip().removeprefix(reaction).lstrip()
-                        )
-                    else:
-                        current_content += delta["content"]
+                if current_content:
+                    if "content" in delta:
+                        if not current_content["content"] and (
+                            reaction := get_reaction(delta["content"])
+                        ):
+                            await self.hass.services.async_call(
+                                TELEGRAM_DOMAIN,
+                                SERVICE_SET_MESSAGE_REACTION,
+                                {
+                                    CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                    ATTR_MESSAGE_ID: event.data.get(ATTR_MSGID)
+                                    or "last",
+                                    ATTR_CHAT_ID: self.chat_id,
+                                    ATTR_REACTION: reaction,
+                                },
+                                context=context,
+                            )
+                            current_content["content"] = (
+                                delta["content"]
+                                .lstrip()
+                                .removeprefix(reaction)
+                                .lstrip()
+                            )
+                        else:
+                            current_content["content"] += delta["content"]
+                    if "thinking_content" in delta:
+                        current_content["thinking_content"] += delta["thinking_content"]
+                    if "tool_calls" in delta:
+                        current_content["tool_calls"].extend(delta["tool_calls"])
 
         @callback
         def chat_log_delta_listener(chat_log: ChatLog, delta: dict[str, Any]) -> None:
             """Handle chat log delta."""
+
+            def log_exceptions(task: asyncio.Task) -> None:
+                """Log exceptions from the delta listener."""
+                if err := task.exception():
+                    LOGGER.error(
+                        "Error in chat log delta listener for chat_id=%s, thread_id=%s: %s",
+                        self.chat_id,
+                        event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
+                        err,
+                        exc_info=err,
+                    )
+
             self.hass.async_create_task(
                 async_chat_log_delta_listener(chat_log, delta),
                 "async_chat_log_delta_listener",
-            )
+            ).add_done_callback(log_exceptions)
 
         with (
             async_get_chat_session(
@@ -507,6 +546,28 @@ class TelegramChatHandler:
                 message_thread_id=event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
                 context=context,
             )
+
+    async def async_handle_chat_log_event(
+        self,
+        thread_id: int,
+        current_conversation: ConversationConfig,
+        event_type: ChatLogEventType,
+        data: dict[str, Any],
+        context: Context | None = None,
+    ) -> None:
+        """Handle chat log events."""
+        async with current_conversation.content_lock:
+            if (
+                event_type == ChatLogEventType.CONTENT_ADDED
+                and (content := data.get("content"))
+                and content.get("role") == "assistant"
+                and content.get("content")
+            ):
+                await self.send_message(
+                    message=content["content"],
+                    message_thread_id=thread_id,
+                    context=context,
+                )
 
     async def async_change_agent(self, agent_id: str) -> bool:
         """Change the conversation agent for this chat."""

@@ -16,6 +16,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from homeassistant.components.conversation.chat_log import async_subscribe_chat_logs
+from homeassistant.components.conversation.const import ChatLogEventType
 from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
 from homeassistant.components.telegram_bot.const import (
     ATTR_CHAT_ID,
@@ -141,6 +143,29 @@ class TelegramBotConversationHandler:
                 self.callback_events_filter,
             )
         )
+
+        self.entry.async_on_unload(
+            async_subscribe_chat_logs(
+                self.hass,
+                self._handle_chat_log_event,
+            )
+        )
+
+    @callback
+    def _handle_chat_log_event(
+        self, conversation_id: str, event_type: ChatLogEventType, data: dict[str, Any]
+    ) -> None:
+        """Handle conversation chat log events."""
+        for handler in self.chat_handlers.values():
+            for thread_id, current_conversation in handler.conversations.items():
+                if current_conversation.conversation_id == conversation_id:
+                    self.hass.async_create_task(
+                        handler.async_handle_chat_log_event(
+                            thread_id, current_conversation, event_type, data
+                        ),
+                        "async_handle_chat_log_event",
+                    )
+                    return
 
     async def async_handle_text(self, event: Event) -> None:
         """Handle text and attachment events."""
