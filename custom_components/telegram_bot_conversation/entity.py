@@ -493,13 +493,29 @@ class TelegramChatHandler:
             LOGGER.debug("Chat log delta: %s", delta)
             if "role" in delta:
                 if current_conversation.draft:
-                    await self.async_handle_chat_log_event(
-                        thread_id=event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
-                        current_conversation=current_conversation,
-                        event_type=ChatLogEventType.CONTENT_ADDED,
-                        data={"content": current_conversation.draft},
-                        context=context,
-                    )
+                    if (
+                        (
+                            current_conversation.draft["content"]
+                            or current_conversation.draft["thinking_content"]
+                            or current_conversation.draft["tool_calls"]
+                        )
+                        and (
+                            delta["role"]
+                            or (  # for last content, only commit if it exists in the chat log
+                                chat_log.content[-1].role == "assistant"
+                                and chat_log.content[-1].content.endswith(
+                                    current_conversation.draft["content"]
+                                )  # endswith is to cater for a possible reaction
+                            )
+                        )
+                    ):
+                        await self.async_handle_chat_log_event(
+                            thread_id=event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
+                            current_conversation=current_conversation,
+                            event_type=ChatLogEventType.CONTENT_ADDED,
+                            data={"content": current_conversation.draft},
+                            context=context,
+                        )
                 if delta["role"] == "assistant":
                     current_conversation.draft = AssistantContentDeltaDict(
                         role="assistant",
@@ -512,26 +528,28 @@ class TelegramChatHandler:
 
                 if delta["role"] is None:
                     responded_tool_calls: set[str] = set()
-                    for content in reversed(chat_log.content):
-                        if content.role == "tool_result":
-                            responded_tool_calls.add(content.tool_call_id)
-                            continue
-                        if content.role == "assistant":
-                            for tool_call in content.tool_calls or []:
-                                if tool_call.id not in responded_tool_calls:
-                                    chat_log.async_add_assistant_content_without_tools(
-                                        ToolResultContent(
-                                            agent_id=self.agent_id,
-                                            tool_call_id=tool_call.id,
-                                            tool_name=tool_call.tool_name,
-                                            tool_result={
-                                                "error": "asyncio.CancelledError: "
-                                                "Conversation interrupted before tool call "
-                                                "could be responded to. Please try again."
-                                            },
+                    async with current_conversation.content_lock:
+                        for content in reversed(chat_log.content):
+                            if content.role == "tool_result":
+                                responded_tool_calls.add(content.tool_call_id)
+                                continue
+                            if content.role == "assistant":
+                                for tool_call in content.tool_calls or []:
+                                    if tool_call.id not in responded_tool_calls:
+                                        chat_log.async_add_assistant_content_without_tools(
+                                            ToolResultContent(
+                                                agent_id=self.agent_id,
+                                                tool_call_id=tool_call.id,
+                                                tool_name=tool_call.tool_name,
+                                                tool_result={
+                                                    "error": "asyncio.CancelledError: "
+                                                    "Conversation interrupted before "
+                                                    "tool call could be responded to. "
+                                                    "Please try again."
+                                                },
+                                            )
                                         )
-                                    )
-                        break
+                            break
 
                 if current_conversation.draft:
                     # Send typing action at the beginning of each assistant response
