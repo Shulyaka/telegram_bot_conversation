@@ -378,7 +378,12 @@ class TelegramChatHandler:
 
             self.hass.async_create_task(
                 self.async_chat_log_delta_listener(
-                    chat_log, delta, event, current_conversation, context
+                    chat_log,
+                    delta,
+                    event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
+                    event.data.get(ATTR_MSGID),
+                    current_conversation,
+                    context,
                 ),
                 "async_chat_log_delta_listener",
             ).add_done_callback(log_exceptions)
@@ -475,7 +480,8 @@ class TelegramChatHandler:
         self,
         chat_log: ChatLog,
         delta: dict[str, Any],
-        event: Event,
+        thread_id: int,
+        msg_id: int | None,
         current_conversation: ConversationConfig,
         context: Context,
     ) -> None:
@@ -510,7 +516,7 @@ class TelegramChatHandler:
                         )
                     ):
                         await self.async_handle_chat_log_event(
-                            thread_id=event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
+                            thread_id=thread_id,
                             current_conversation=current_conversation,
                             event_type=ChatLogEventType.CONTENT_ADDED,
                             data={"content": current_conversation.draft},
@@ -562,10 +568,7 @@ class TelegramChatHandler:
                                 self.chat_id,
                                 self.notify_entity_id,
                             ),
-                            ATTR_MESSAGE_THREAD_ID: event.data.get(
-                                ATTR_MESSAGE_THREAD_ID
-                            )
-                            or 0,
+                            ATTR_MESSAGE_THREAD_ID: thread_id,
                             ATTR_CHAT_ACTION: CHAT_ACTION_TYPING,
                         },
                         context=context,
@@ -581,7 +584,7 @@ class TelegramChatHandler:
                             SERVICE_SET_MESSAGE_REACTION,
                             {
                                 CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                                ATTR_MESSAGE_ID: event.data.get(ATTR_MSGID) or "last",
+                                ATTR_MESSAGE_ID: msg_id or "last",
                                 ATTR_CHAT_ID: self.chat_id,
                                 ATTR_REACTION: reaction,
                             },
