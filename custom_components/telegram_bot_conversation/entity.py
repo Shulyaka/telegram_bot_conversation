@@ -11,14 +11,8 @@ from pathlib import Path
 import tempfile
 from typing import Any, Self
 
-from telegramify_markdown import telegramify
-from telegramify_markdown.interpreters import (
-    BaseInterpreter,
-    FileInterpreter,
-    MermaidInterpreter,
-    TextInterpreter,
-)
-from telegramify_markdown.type import ContentTypes
+from telegramify_markdown import entities_to_markdownv2, telegramify
+from telegramify_markdown.content import ContentType
 
 from homeassistant.components.conversation import (
     AssistantContentDeltaDict,
@@ -196,15 +190,14 @@ class TelegramChatHandler:
         self.conversations: dict[int, ConversationConfig] = {}
 
         options = entry.options
-        self.interpreter_chain: list[BaseInterpreter] = [TextInterpreter()]
         self.extra_prompt = (
             "The user is interacting through Telegram. Markdown is supported. "
         )
+        if options.get(CONF_LATEX, True):
+            self.extra_prompt += "Inline LaTeX rendering is supported. "
         if options.get(CONF_ATTACHMENTS, True):
-            self.interpreter_chain.append(FileInterpreter())
-            self.extra_prompt += "Code blocks will be sent as files. "
+            self.extra_prompt += "Long code blocks will be sent as files. "
         if options.get(CONF_MERMAID, True):
-            self.interpreter_chain.append(MermaidInterpreter())
             self.extra_prompt += "Mermaid is supported as inline code blocks. "
         self.extra_prompt += (
             f"If the response message starts with any of {REACTION_EMOJI}, "
@@ -242,17 +235,19 @@ class TelegramChatHandler:
             with TelegramMessageWatcher(self.hass, self.telegram_entry_id) as watcher:
                 for item in await telegramify(
                     content=message,
-                    interpreters_use=self.interpreter_chain,
-                    normalize_whitespace=True,
                     latex_escape=self.entry.options.get(CONF_LATEX, True),
-                    max_word_count=MAX_TELEGRAM_LENGTH,
+                    render_mermaid=self.entry.options.get(CONF_MERMAID, True),
+                    min_file_lines=self.entry.options.get(CONF_ATTACHMENTS, 20),
+                    max_message_length=MAX_TELEGRAM_LENGTH,
                 ):
-                    if item.content_type == ContentTypes.TEXT:
+                    if item.content_type == ContentType.TEXT:
                         item_messages = await self.hass.services.async_call(
                             TELEGRAM_DOMAIN,
                             SERVICE_SEND_MESSAGE,
                             {
-                                ATTR_MESSAGE: item.content,
+                                ATTR_MESSAGE: entities_to_markdownv2(
+                                    item.text, item.entities
+                                ),
                                 **get_telegram_service_target(
                                     self.chat_id, self.notify_entity_id
                                 ),
@@ -264,11 +259,11 @@ class TelegramChatHandler:
                             context=context,
                             return_response=True,
                         )
-                    elif item.content_type in (ContentTypes.PHOTO, ContentTypes.FILE):
+                    elif item.content_type in (ContentType.PHOTO, ContentType.FILE):
                         item_messages = await self.hass.services.async_call(
                             TELEGRAM_DOMAIN,
                             SERVICE_SEND_PHOTO
-                            if item.content_type == ContentTypes.PHOTO
+                            if item.content_type == ContentType.PHOTO
                             else SERVICE_SEND_DOCUMENT,
                             {
                                 ATTR_FILE: (
@@ -276,8 +271,10 @@ class TelegramChatHandler:
                                         save_file, item.file_name, item.file_data
                                     )
                                 ).as_posix(),
-                                ATTR_CAPTION: item.caption,
-                                **get_telegram_service_target(
+                                ATTR_CAPTION: entities_to_markdownv2(
+                                    item.caption_text, item.caption_entities
+                                )
+                                ** get_telegram_service_target(
                                     self.chat_id, self.notify_entity_id
                                 ),
                                 ATTR_MESSAGE_THREAD_ID: message_thread_id,

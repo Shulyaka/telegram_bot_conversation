@@ -10,7 +10,7 @@ from custom_components.telegram_bot_conversation.const import (
 
 MOCK_OPTIONS_CONFIG = {
     CONF_CONVERSATION_TIMEOUT: {"minutes": 15},
-    CONF_ATTACHMENTS: True,
+    CONF_ATTACHMENTS: 15,
     CONF_LATEX: False,
     CONF_MERMAID: False,
     CONF_TMPDIR: "/mnt/share/media",

@@ -60,7 +60,7 @@
                     "tmpdir": "Temporary directory"
                 },
                 "data_description": {
-                    "attachments": "Send code blocks as files.",
+                    "attachments": "Minimum number of lines in a code block to be sent as files. Set to 0 to disable the functionality.",
                     "conversation_timeout": "Overwrite default conversation timeout for context management. The bot will ignore message history if the chat is interrupted for longer than this time.",
                     "latex": "Convert LaTeX to Unicode.",
                     "mermaid": "Render Mermaid diagrams in messages as images.",

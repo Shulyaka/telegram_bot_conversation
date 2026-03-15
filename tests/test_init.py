@@ -78,7 +78,7 @@ async def test_send_message_uses_notify_entity_id(
     call = calls[0]
     assert call.domain == TELEGRAM_DOMAIN
     assert call.service == SERVICE_SEND_MESSAGE
-    assert call.data[ATTR_MESSAGE] == "Hello\n"
+    assert call.data[ATTR_MESSAGE] == "Hello"
     assert call.data[ATTR_ENTITY_ID] == [chat_handler.notify_entity_id]
     assert ATTR_CHAT_ID not in call.data
     assert call.data[ATTR_MESSAGE_THREAD_ID] == 0
