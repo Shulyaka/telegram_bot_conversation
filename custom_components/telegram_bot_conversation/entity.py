@@ -273,8 +273,8 @@ class TelegramChatHandler:
                                 ).as_posix(),
                                 ATTR_CAPTION: entities_to_markdownv2(
                                     item.caption_text, item.caption_entities
-                                )
-                                ** get_telegram_service_target(
+                                ),
+                                **get_telegram_service_target(
                                     self.chat_id, self.notify_entity_id
                                 ),
                                 ATTR_MESSAGE_THREAD_ID: message_thread_id,
