@@ -13,7 +13,7 @@ from homeassistant.components.telegram_bot.const import (
 )
 from homeassistant.config_entries import ConfigSubentryData, ConfigSubentryFlow
 from homeassistant.core import callback
-from homeassistant.helpers import selector
+from homeassistant.helpers import config_validation as cv, selector
 
 from . import TelegramBotConversationConfigEntry
 from .const import (
@@ -89,7 +89,7 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                vol.Optional(CONF_ATTACHMENTS, default=False): bool,
+                vol.Optional(CONF_ATTACHMENTS, default=20): cv.positive_int,
                 vol.Optional(CONF_LATEX, default=True): bool,
                 vol.Optional(CONF_MERMAID, default=True): bool,
             }
