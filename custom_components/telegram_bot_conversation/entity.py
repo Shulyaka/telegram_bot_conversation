@@ -25,6 +25,7 @@ from homeassistant.components.conversation import (
     Attachment,
     ChatLog,
     ConversationEntity,
+    ToolResultContent,
     UserContent,
     async_converse,
     async_get_chat_log,
@@ -166,6 +167,7 @@ class ConversationConfig:
     task: asyncio.Task | None
     delta_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
     content_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
+    draft: AssistantContentDeltaDict | None = None
 
 
 class TelegramChatHandler:
@@ -330,13 +332,20 @@ class TelegramChatHandler:
             """Clear reference to completed task to avoid retaining tracebacks."""
             if current_conversation.task is _task:
                 current_conversation.task = None
-            if (err := _task.exception()) and isinstance(err, Exception):
-                LOGGER.error(
-                    "Error in conversation task for chat_id=%s, thread_id=%s: %s",
+            try:
+                if err := _task.exception():
+                    LOGGER.error(
+                        "Error in conversation task for chat_id=%s, thread_id=%s: %s",
+                        self.chat_id,
+                        thread_id,
+                        err,
+                        exc_info=err,
+                    )
+            except asyncio.CancelledError:
+                LOGGER.debug(
+                    "Conversation task for chat_id=%s, thread_id=%s was cancelled.",
                     self.chat_id,
                     thread_id,
-                    err,
-                    exc_info=err,
                 )
 
         task.add_done_callback(_clear_task)
@@ -350,94 +359,6 @@ class TelegramChatHandler:
             context.user_id = self.user_id
 
         error: asyncio.CancelledError | None = None
-        current_content: AssistantContentDeltaDict | None = None
-
-        def get_reaction(content: str) -> str | None:
-            """Extract reaction from content if it starts with a known reaction emoji."""
-            matches = [e for e in REACTION_EMOJI if content.lstrip().startswith(e)]
-            return max(matches, key=len) if matches else None
-
-        async def async_chat_log_delta_listener(
-            chat_log: ChatLog, delta: dict[str, Any]
-        ) -> None:
-            """Handle chat log delta."""
-            nonlocal current_content
-            async with current_conversation.delta_lock:
-                if (
-                    current_conversation.task is None
-                    or current_conversation.task.done()
-                ):
-                    return
-
-                LOGGER.debug("Chat log delta: %s", delta)
-                if "role" in delta:
-                    if current_content:
-                        await self.async_handle_chat_log_event(
-                            thread_id=event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
-                            current_conversation=current_conversation,
-                            event_type=ChatLogEventType.CONTENT_ADDED,
-                            data={"content": current_content},
-                            context=context,
-                        )
-                    if delta["role"] == "assistant":
-                        current_content = AssistantContentDeltaDict(
-                            role="assistant",
-                            content="",
-                            thinking_content="",
-                            tool_calls=[],
-                        )
-                    else:
-                        current_content = None
-
-                    if current_content:
-                        # Send typing action at the beginning of each assistant response
-                        await self.hass.services.async_call(
-                            TELEGRAM_DOMAIN,
-                            SERVICE_SEND_CHAT_ACTION,
-                            {
-                                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                                **get_telegram_service_target(
-                                    self.chat_id,
-                                    self.notify_entity_id,
-                                ),
-                                ATTR_MESSAGE_THREAD_ID: event.data.get(
-                                    ATTR_MESSAGE_THREAD_ID
-                                )
-                                or 0,
-                                ATTR_CHAT_ACTION: CHAT_ACTION_TYPING,
-                            },
-                            context=context,
-                        )
-
-                if current_content:
-                    if "content" in delta:
-                        if not current_content["content"] and (
-                            reaction := get_reaction(delta["content"])
-                        ):
-                            await self.hass.services.async_call(
-                                TELEGRAM_DOMAIN,
-                                SERVICE_SET_MESSAGE_REACTION,
-                                {
-                                    CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                                    ATTR_MESSAGE_ID: event.data.get(ATTR_MSGID)
-                                    or "last",
-                                    ATTR_CHAT_ID: self.chat_id,
-                                    ATTR_REACTION: reaction,
-                                },
-                                context=context,
-                            )
-                            current_content["content"] = (
-                                delta["content"]
-                                .lstrip()
-                                .removeprefix(reaction)
-                                .lstrip()
-                            )
-                        else:
-                            current_content["content"] += delta["content"]
-                    if "thinking_content" in delta:
-                        current_content["thinking_content"] += delta["thinking_content"]
-                    if "tool_calls" in delta:
-                        current_content["tool_calls"].extend(delta["tool_calls"])
 
         @callback
         def chat_log_delta_listener(chat_log: ChatLog, delta: dict[str, Any]) -> None:
@@ -445,17 +366,25 @@ class TelegramChatHandler:
 
             def log_exceptions(task: asyncio.Task) -> None:
                 """Log exceptions from the delta listener."""
-                if err := task.exception():
-                    LOGGER.error(
-                        "Error in chat log delta listener for chat_id=%s, thread_id=%s: %s",
-                        self.chat_id,
-                        event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
-                        err,
-                        exc_info=err,
-                    )
+                with contextlib.suppress(asyncio.CancelledError):
+                    if err := task.exception():
+                        LOGGER.error(
+                            "Error in chat log delta listener for chat_id=%s, thread_id=%s: %s",
+                            self.chat_id,
+                            event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
+                            err,
+                            exc_info=err,
+                        )
 
             self.hass.async_create_task(
-                async_chat_log_delta_listener(chat_log, delta),
+                self.async_chat_log_delta_listener(
+                    chat_log,
+                    delta,
+                    event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
+                    event.data.get(ATTR_MSGID),
+                    current_conversation,
+                    context,
+                ),
                 "async_chat_log_delta_listener",
             ).add_done_callback(log_exceptions)
 
@@ -547,6 +476,132 @@ class TelegramChatHandler:
                 context=context,
             )
 
+    async def async_chat_log_delta_listener(
+        self,
+        chat_log: ChatLog,
+        delta: dict[str, Any],
+        thread_id: int,
+        msg_id: int | None,
+        current_conversation: ConversationConfig,
+        context: Context,
+    ) -> None:
+        """Handle chat log delta."""
+
+        def get_reaction(content: str) -> str | None:
+            """Extract reaction from content if it starts with a known reaction emoji."""
+            matches = [e for e in REACTION_EMOJI if content.lstrip().startswith(e)]
+            return max(matches, key=len) if matches else None
+
+        async with current_conversation.delta_lock:
+            if current_conversation.task is None or current_conversation.task.done():
+                return
+
+            LOGGER.debug("Chat log delta: %s", delta)
+            if "role" in delta:
+                if current_conversation.draft:
+                    if (
+                        (
+                            current_conversation.draft["content"]
+                            or current_conversation.draft["thinking_content"]
+                            or current_conversation.draft["tool_calls"]
+                        )
+                        and (
+                            delta["role"]
+                            or (  # for last content, only commit if it exists in the chat log
+                                chat_log.content[-1].role == "assistant"
+                                and chat_log.content[-1].content.endswith(
+                                    current_conversation.draft["content"]
+                                )  # endswith is to cater for a possible reaction
+                            )
+                        )
+                    ):
+                        await self.async_handle_chat_log_event(
+                            thread_id=thread_id,
+                            current_conversation=current_conversation,
+                            event_type=ChatLogEventType.CONTENT_ADDED,
+                            data={"content": current_conversation.draft},
+                            context=context,
+                        )
+                if delta["role"] == "assistant":
+                    current_conversation.draft = AssistantContentDeltaDict(
+                        role="assistant",
+                        content="",
+                        thinking_content="",
+                        tool_calls=[],
+                    )
+                else:
+                    current_conversation.draft = None
+
+                if delta["role"] is None:
+                    responded_tool_calls: set[str] = set()
+                    async with current_conversation.content_lock:
+                        for content in reversed(chat_log.content):
+                            if content.role == "tool_result":
+                                responded_tool_calls.add(content.tool_call_id)
+                                continue
+                            if content.role == "assistant":
+                                for tool_call in content.tool_calls or []:
+                                    if tool_call.id not in responded_tool_calls:
+                                        chat_log.async_add_assistant_content_without_tools(
+                                            ToolResultContent(
+                                                agent_id=self.agent_id,
+                                                tool_call_id=tool_call.id,
+                                                tool_name=tool_call.tool_name,
+                                                tool_result={
+                                                    "error": "asyncio.CancelledError: "
+                                                    "Conversation interrupted before "
+                                                    "tool call could be responded to. "
+                                                    "Please try again."
+                                                },
+                                            )
+                                        )
+                            break
+
+                if current_conversation.draft:
+                    # Send typing action at the beginning of each assistant response
+                    await self.hass.services.async_call(
+                        TELEGRAM_DOMAIN,
+                        SERVICE_SEND_CHAT_ACTION,
+                        {
+                            CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                            **get_telegram_service_target(
+                                self.chat_id,
+                                self.notify_entity_id,
+                            ),
+                            ATTR_MESSAGE_THREAD_ID: thread_id,
+                            ATTR_CHAT_ACTION: CHAT_ACTION_TYPING,
+                        },
+                        context=context,
+                    )
+
+            if current_conversation.draft:
+                if "content" in delta:
+                    if not current_conversation.draft["content"] and (
+                        reaction := get_reaction(delta["content"])
+                    ):
+                        await self.hass.services.async_call(
+                            TELEGRAM_DOMAIN,
+                            SERVICE_SET_MESSAGE_REACTION,
+                            {
+                                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                ATTR_MESSAGE_ID: msg_id or "last",
+                                ATTR_CHAT_ID: self.chat_id,
+                                ATTR_REACTION: reaction,
+                            },
+                            context=context,
+                        )
+                        current_conversation.draft["content"] = (
+                            delta["content"].lstrip().removeprefix(reaction).lstrip()
+                        )
+                    else:
+                        current_conversation.draft["content"] += delta["content"]
+                if "thinking_content" in delta:
+                    current_conversation.draft["thinking_content"] += delta[
+                        "thinking_content"
+                    ]
+                if "tool_calls" in delta:
+                    current_conversation.draft["tool_calls"].extend(delta["tool_calls"])
+
     async def async_handle_chat_log_event(
         self,
         thread_id: int,
@@ -561,10 +616,10 @@ class TelegramChatHandler:
                 event_type == ChatLogEventType.CONTENT_ADDED
                 and (content := data.get("content"))
                 and content.get("role") == "assistant"
-                and content.get("content")
+                and (message := content.get("content"))
             ):
                 await self.send_message(
-                    message=content["content"],
+                    message=message,
                     message_thread_id=thread_id,
                     context=context,
                 )
