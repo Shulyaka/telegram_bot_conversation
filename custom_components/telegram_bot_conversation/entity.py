@@ -167,7 +167,7 @@ class ConversationConfig:
     task: asyncio.Task | None
     delta_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
     content_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
-    current_content: AssistantContentDeltaDict | None = None
+    draft: AssistantContentDeltaDict | None = None
 
 
 class TelegramChatHandler:
@@ -492,23 +492,23 @@ class TelegramChatHandler:
 
             LOGGER.debug("Chat log delta: %s", delta)
             if "role" in delta:
-                if current_conversation.current_content:
+                if current_conversation.draft:
                     await self.async_handle_chat_log_event(
                         thread_id=event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
                         current_conversation=current_conversation,
                         event_type=ChatLogEventType.CONTENT_ADDED,
-                        data={"content": current_conversation.current_content},
+                        data={"content": current_conversation.draft},
                         context=context,
                     )
                 if delta["role"] == "assistant":
-                    current_conversation.current_content = AssistantContentDeltaDict(
+                    current_conversation.draft = AssistantContentDeltaDict(
                         role="assistant",
                         content="",
                         thinking_content="",
                         tool_calls=[],
                     )
                 else:
-                    current_conversation.current_content = None
+                    current_conversation.draft = None
 
                 if delta["role"] is None:
                     responded_tool_calls: set[str] = set()
@@ -533,7 +533,7 @@ class TelegramChatHandler:
                                     )
                         break
 
-                if current_conversation.current_content:
+                if current_conversation.draft:
                     # Send typing action at the beginning of each assistant response
                     await self.hass.services.async_call(
                         TELEGRAM_DOMAIN,
@@ -553,9 +553,9 @@ class TelegramChatHandler:
                         context=context,
                     )
 
-            if current_conversation.current_content:
+            if current_conversation.draft:
                 if "content" in delta:
-                    if not current_conversation.current_content["content"] and (
+                    if not current_conversation.draft["content"] and (
                         reaction := get_reaction(delta["content"])
                     ):
                         await self.hass.services.async_call(
@@ -569,21 +569,17 @@ class TelegramChatHandler:
                             },
                             context=context,
                         )
-                        current_conversation.current_content["content"] = (
+                        current_conversation.draft["content"] = (
                             delta["content"].lstrip().removeprefix(reaction).lstrip()
                         )
                     else:
-                        current_conversation.current_content["content"] += delta[
-                            "content"
-                        ]
+                        current_conversation.draft["content"] += delta["content"]
                 if "thinking_content" in delta:
-                    current_conversation.current_content["thinking_content"] += delta[
+                    current_conversation.draft["thinking_content"] += delta[
                         "thinking_content"
                     ]
                 if "tool_calls" in delta:
-                    current_conversation.current_content["tool_calls"].extend(
-                        delta["tool_calls"]
-                    )
+                    current_conversation.draft["tool_calls"].extend(delta["tool_calls"])
 
     async def async_handle_chat_log_event(
         self,
