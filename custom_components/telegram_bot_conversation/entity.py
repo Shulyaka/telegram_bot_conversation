@@ -25,6 +25,7 @@ from homeassistant.components.conversation import (
     Attachment,
     ChatLog,
     ConversationEntity,
+    ToolResultContent,
     UserContent,
     async_converse,
     async_get_chat_log,
@@ -330,13 +331,20 @@ class TelegramChatHandler:
             """Clear reference to completed task to avoid retaining tracebacks."""
             if current_conversation.task is _task:
                 current_conversation.task = None
-            if (err := _task.exception()) and isinstance(err, Exception):
-                LOGGER.error(
-                    "Error in conversation task for chat_id=%s, thread_id=%s: %s",
+            try:
+                if err := _task.exception():
+                    LOGGER.error(
+                        "Error in conversation task for chat_id=%s, thread_id=%s: %s",
+                        self.chat_id,
+                        thread_id,
+                        err,
+                        exc_info=err,
+                    )
+            except asyncio.CancelledError:
+                LOGGER.debug(
+                    "Conversation task for chat_id=%s, thread_id=%s was cancelled.",
                     self.chat_id,
                     thread_id,
-                    err,
-                    exc_info=err,
                 )
 
         task.add_done_callback(_clear_task)
@@ -388,6 +396,29 @@ class TelegramChatHandler:
                         )
                     else:
                         current_content = None
+
+                    if delta["role"] is None:
+                        responded_tool_calls: set[str] = set()
+                        for content in reversed(chat_log.content):
+                            if content.role == "tool_result":
+                                responded_tool_calls.add(content.tool_call_id)
+                                continue
+                            if content.role == "assistant":
+                                for tool_call in content.tool_calls:
+                                    if tool_call.id not in responded_tool_calls:
+                                        chat_log.async_add_assistant_content_without_tools(
+                                            ToolResultContent(
+                                                agent_id=self.agent_id,
+                                                tool_call_id=tool_call.id,
+                                                tool_name=tool_call.tool_name,
+                                                tool_result={
+                                                    "error": "asyncio.CancelledError: "
+                                                    "Conversation interrupted before tool call "
+                                                    "could be responded to."
+                                                },
+                                            )
+                                        )
+                            break
 
                     if current_content:
                         # Send typing action at the beginning of each assistant response
@@ -445,14 +476,15 @@ class TelegramChatHandler:
 
             def log_exceptions(task: asyncio.Task) -> None:
                 """Log exceptions from the delta listener."""
-                if err := task.exception():
-                    LOGGER.error(
-                        "Error in chat log delta listener for chat_id=%s, thread_id=%s: %s",
-                        self.chat_id,
-                        event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
-                        err,
-                        exc_info=err,
-                    )
+                with contextlib.suppress(asyncio.CancelledError):
+                    if err := task.exception():
+                        LOGGER.error(
+                            "Error in chat log delta listener for chat_id=%s, thread_id=%s: %s",
+                            self.chat_id,
+                            event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
+                            err,
+                            exc_info=err,
+                        )
 
             self.hass.async_create_task(
                 async_chat_log_delta_listener(chat_log, delta),
@@ -561,10 +593,10 @@ class TelegramChatHandler:
                 event_type == ChatLogEventType.CONTENT_ADDED
                 and (content := data.get("content"))
                 and content.get("role") == "assistant"
-                and content.get("content")
+                and (message := content.get("content"))
             ):
                 await self.send_message(
-                    message=content["content"],
+                    message=message,
                     message_thread_id=thread_id,
                     context=context,
                 )
