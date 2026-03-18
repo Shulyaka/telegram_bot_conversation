@@ -250,14 +250,15 @@ class TelegramChatHandler:
 
         def log_exceptions(task: asyncio.Task) -> None:
             """Log exceptions from send_message."""
-            if err := task.exception():
-                LOGGER.error(
-                    "Error in send_message for chat_id=%s, thread_id=%s: %s",
-                    self.chat_id,
-                    thread_id,
-                    err,
-                    exc_info=err,
-                )
+            with contextlib.suppress(asyncio.CancelledError):
+                if err := task.exception():
+                    LOGGER.error(
+                        "Error in send_message for chat_id=%s, thread_id=%s: %s",
+                        self.chat_id,
+                        thread_id,
+                        err,
+                        exc_info=err,
+                    )
 
         @callback
         def _run_update_draft(_: Any) -> None:
@@ -280,6 +281,8 @@ class TelegramChatHandler:
         current_conversation = self.conversations.setdefault(
             thread_id, ConversationConfig()
         )
+        if current_conversation.draft_cancel is not None:
+            current_conversation.draft_cancel()
         current_conversation.draft_cancel = None
 
         if context is None:
@@ -362,13 +365,15 @@ class TelegramChatHandler:
                         if item.content_type == ContentType.TEXT:
                             text = entities_to_markdownv2(item.text, item.entities)
                         elif item.content_type == ContentType.PHOTO:
-                            text = entities_to_markdownv2(
-                                "Drawing " + item.caption_text, item.caption_entities
+                            caption_md = entities_to_markdownv2(
+                                item.caption_text, item.caption_entities
                             )
+                            text = "Drawing " + caption_md
                         elif item.content_type == ContentType.FILE:
-                            text = entities_to_markdownv2(
-                                "Writing " + item.caption_text, item.caption_entities
+                            caption_md = entities_to_markdownv2(
+                                item.caption_text, item.caption_entities
                             )
+                            text = "Writing " + caption_md
                         else:
                             continue
 

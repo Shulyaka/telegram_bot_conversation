@@ -13,8 +13,9 @@ https://github.com/Shulyaka/telegram_bot_conversation
 
 from __future__ import annotations
 
-from asyncio import Task
+from asyncio import CancelledError, Task
 from collections.abc import Mapping
+from contextlib import suppress
 from typing import Any
 
 from homeassistant.components.conversation.chat_log import async_subscribe_chat_logs
@@ -171,20 +172,30 @@ class TelegramBotConversationHandler:
             LOGGER.warning("Invalid conversation_id format: %s", conversation_id)
             return
 
+        handler = self.chat_handlers.get(chat_id)
+        if handler is None:
+            LOGGER.debug(
+                "No chat handler found for chat_id=%s, thread_id=%s; ignoring chat log event",
+                chat_id,
+                thread_id,
+            )
+            return
+
         def log_exceptions(task: Task) -> None:
             """Log exceptions from async_handle_chat_log_event."""
-            if err := task.exception():
-                LOGGER.error(
-                    "Error in async_handle_chat_log_event for chat_id=%s, thread_id=%s: %s",
-                    chat_id,
-                    thread_id,
-                    err,
-                    exc_info=err,
-                )
+            with suppress(CancelledError):
+                if err := task.exception():
+                    LOGGER.error(
+                        "Error in async_handle_chat_log_event for chat_id=%s, thread_id=%s: %s",
+                        chat_id,
+                        thread_id,
+                        err,
+                        exc_info=err,
+                    )
 
         self.entry.async_create_task(
             self.hass,
-            self.chat_handlers[chat_id].async_handle_chat_log_event(
+            handler.async_handle_chat_log_event(
                 thread_id, event_type, data
             ),
             "async_handle_chat_log_event",
