@@ -84,6 +84,7 @@ from .const import (
     CONF_DISABLE_WEB_PREV,
     CONF_LATEX,
     CONF_MERMAID,
+    CONF_THOUGHTS,
     CONF_TMPDIR,
     DEFAULT_CONVERSATION_TIMEOUT,
     LOGGER,
@@ -292,7 +293,11 @@ class TelegramChatHandler:
             message = (
                 (
                     current_conversation.draft["content"]
-                    or current_conversation.draft["thinking_content"]
+                    or (
+                        current_conversation.draft["thinking_content"]
+                        if self.entry.options.get(CONF_THOUGHTS, True)
+                        else ""
+                    )
                     or ""
                 )
                 if current_conversation.draft
