@@ -13,6 +13,7 @@ https://github.com/Shulyaka/telegram_bot_conversation
 
 from __future__ import annotations
 
+from asyncio import Task
 from collections.abc import Mapping
 from typing import Any
 
@@ -40,6 +41,7 @@ from .const import (
     CONF_TELEGRAM_ENTRY,
     CONF_TELEGRAM_SUBENTRY,
     CONF_USER,
+    LOGGER,
 )
 from .entity import TelegramChatHandler
 
@@ -156,20 +158,44 @@ class TelegramBotConversationHandler:
         self, conversation_id: str, event_type: ChatLogEventType, data: dict[str, Any]
     ) -> None:
         """Handle conversation chat log events."""
-        for handler in self.chat_handlers.values():
-            for thread_id, current_conversation in handler.conversations.items():
-                if current_conversation.conversation_id == conversation_id:
-                    self.hass.async_create_task(
-                        handler.async_handle_chat_log_event(
-                            thread_id, current_conversation, event_type, data
-                        ),
-                        "async_handle_chat_log_event",
-                    )
-                    return
+        parts = conversation_id.split("_")
+        if len(parts) < 2 or parts[0] != "telegram":
+            return
+        try:
+            chat_id = int(parts[1])
+            if len(parts) == 3:
+                thread_id = int(parts[2])
+            else:
+                thread_id = 0
+        except ValueError:
+            LOGGER.warning("Invalid conversation_id format: %s", conversation_id)
+            return
+
+        def log_exceptions(task: Task) -> None:
+            """Log exceptions from async_handle_chat_log_event."""
+            if err := task.exception():
+                LOGGER.error(
+                    "Error in async_handle_chat_log_event for chat_id=%s, thread_id=%s: %s",
+                    chat_id,
+                    thread_id,
+                    err,
+                    exc_info=err,
+                )
+
+        self.entry.async_create_task(
+            self.hass,
+            self.chat_handlers[chat_id].async_handle_chat_log_event(
+                thread_id, event_type, data
+            ),
+            "async_handle_chat_log_event",
+        ).add_done_callback(log_exceptions)
 
     async def async_handle_text(self, event: Event) -> None:
         """Handle text and attachment events."""
-        await self.chat_handlers[event.data[ATTR_CHAT_ID]].async_handle_text(event)
+        try:
+            await self.chat_handlers[event.data[ATTR_CHAT_ID]].async_handle_text(event)
+        except Exception as e:  # noqa: BLE001
+            LOGGER.exception("Error handling text/attachment event: %s", e)
 
     @callback
     def text_events_filter(self, event_data: Mapping[str, Any]) -> bool:
@@ -183,7 +209,12 @@ class TelegramBotConversationHandler:
 
     async def async_handle_command(self, event: Event) -> None:
         """Handle command events."""
-        await self.chat_handlers[event.data[ATTR_CHAT_ID]].async_handle_command(event)
+        try:
+            await self.chat_handlers[event.data[ATTR_CHAT_ID]].async_handle_command(
+                event
+            )
+        except Exception as e:  # noqa: BLE001
+            LOGGER.exception("Error handling command event: %s", e)
 
     @callback
     def command_events_filter(self, event_data: Mapping[str, Any]) -> bool:
@@ -198,7 +229,12 @@ class TelegramBotConversationHandler:
 
     async def async_handle_callback(self, event: Event) -> None:
         """Handle callback query events."""
-        await self.chat_handlers[event.data[ATTR_CHAT_ID]].async_handle_callback(event)
+        try:
+            await self.chat_handlers[event.data[ATTR_CHAT_ID]].async_handle_callback(
+                event
+            )
+        except Exception as e:  # noqa: BLE001
+            LOGGER.exception("Error handling callback event: %s", e)
 
     @callback
     def callback_events_filter(self, event_data: Mapping[str, Any]) -> bool:

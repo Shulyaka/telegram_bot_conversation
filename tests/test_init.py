@@ -1,9 +1,17 @@
 """Tests for telegram_bot_conversation runtime setup."""
 
+from unittest.mock import AsyncMock, patch
+
 from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.telegram_bot_conversation import TelegramBotConversationHandler
 from custom_components.telegram_bot_conversation.const import CONF_TELEGRAM_SUBENTRY
+from homeassistant.components.conversation import (
+    AssistantContent,
+    UserContent,
+    async_get_chat_log,
+)
+from homeassistant.components.conversation.chat_log import DATA_CHAT_LOGS
 from homeassistant.components.telegram_bot.const import (
     ATTR_CHAT_ID,
     ATTR_MESSAGE,
@@ -14,8 +22,9 @@ from homeassistant.components.telegram_bot.const import (
     SERVICE_SEND_MESSAGE,
 )
 from homeassistant.const import ATTR_ENTITY_ID
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.chat_session import DATA_CHAT_SESSION, async_get_chat_session
 
 
 async def test_handler_resolves_notify_entity_id(
@@ -71,7 +80,7 @@ async def test_send_message_uses_notify_entity_id(
 
     await chat_handler.send_message(
         message="Hello",
-        message_thread_id=0,
+        thread_id=0,
     )
 
     assert len(calls) == 1
@@ -83,3 +92,47 @@ async def test_send_message_uses_notify_entity_id(
     assert ATTR_CHAT_ID not in call.data
     assert call.data[ATTR_MESSAGE_THREAD_ID] == 0
     assert call.data[CONF_CONFIG_ENTRY_ID] == mock_telegram_config_entry.entry_id
+
+
+async def test_new_command_clears_history_immediately(
+    hass: HomeAssistant,
+    mock_telegram_config_entry,
+    mock_config_entry,
+) -> None:
+    """Test that the /new command drops the stored session and chat log right away."""
+    handler = TelegramBotConversationHandler(hass, mock_config_entry)
+
+    _, telegram_subentry = next(iter(mock_telegram_config_entry.subentries.items()))
+    chat_id = telegram_subentry.data[CONF_CHAT_ID]
+    chat_handler = handler.chat_handlers[chat_id]
+    conversation_id = f"telegram_{chat_id}"
+
+    with (
+        async_get_chat_session(hass, conversation_id) as session,
+        async_get_chat_log(hass, session) as chat_log,
+    ):
+        chat_log.async_add_user_content(UserContent(content="Hello"))
+        chat_log.async_add_assistant_content_without_tools(
+            AssistantContent(agent_id="test-agent", content="Hi there")
+        )
+
+    assert conversation_id in hass.data[DATA_CHAT_SESSION]
+    assert conversation_id in hass.data[DATA_CHAT_LOGS]
+
+    context = Context()
+    with patch.object(chat_handler, "send_message", AsyncMock()) as send_message:
+        await chat_handler.async_process_command(0, "/new", [], context)
+
+    assert conversation_id not in hass.data[DATA_CHAT_SESSION]
+    assert conversation_id not in hass.data[DATA_CHAT_LOGS]
+    send_message.assert_awaited_once_with(
+        message="New conversation started.",
+        thread_id=0,
+        context=context,
+    )
+
+    with (
+        async_get_chat_session(hass, conversation_id) as session,
+        async_get_chat_log(hass, session) as chat_log,
+    ):
+        assert [content.role for content in chat_log.content] == ["system"]
