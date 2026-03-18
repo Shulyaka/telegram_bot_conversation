@@ -195,9 +195,7 @@ class TelegramBotConversationHandler:
 
         self.entry.async_create_task(
             self.hass,
-            handler.async_handle_chat_log_event(
-                thread_id, event_type, data
-            ),
+            handler.async_handle_chat_log_event(thread_id, event_type, data),
             "async_handle_chat_log_event",
         ).add_done_callback(log_exceptions)
 
