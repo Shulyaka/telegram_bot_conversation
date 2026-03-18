@@ -270,7 +270,7 @@ class TelegramChatHandler:
 
         return async_call_later(self.hass, delay, _run_update_draft)
 
-    async def send_message(
+    async def send_message(  # noqa: C901
         self,
         message: str = "",
         thread_id: int = 0,
