@@ -55,6 +55,7 @@
                 "data": {
                     "attachments": "Attachments",
                     "conversation_timeout": "Conversation timeout",
+                    "disable_web_page_preview": "Disable web page preview",
                     "latex": "LaTeX",
                     "mermaid": "Mermaid",
                     "tmpdir": "Temporary directory"
@@ -62,6 +63,7 @@
                 "data_description": {
                     "attachments": "Minimum number of lines in a code block to be sent as files. Set to 0 to disable the functionality.",
                     "conversation_timeout": "Overwrite default conversation timeout for context management. The bot will ignore message history if the chat is interrupted for longer than this time.",
+                    "disable_web_page_preview": "Disable link previews for links in the message",
                     "latex": "Convert LaTeX to Unicode.",
                     "mermaid": "Render Mermaid diagrams in messages as images.",
                     "tmpdir": "Directory to store temporary files while they are being uploaded to Telegram. You can add a new directory in configuration.yaml as allowlist_external_dirs"
