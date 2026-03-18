@@ -25,6 +25,7 @@ from .const import (
     CONF_MERMAID,
     CONF_TELEGRAM_ENTRY,
     CONF_TELEGRAM_SUBENTRY,
+    CONF_THOUGHTS,
     CONF_TMPDIR,
     CONF_USER,
     DOMAIN,
@@ -94,6 +95,7 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_LATEX, default=True): bool,
                 vol.Optional(CONF_MERMAID, default=True): bool,
                 vol.Optional(CONF_DISABLE_WEB_PREV, default=False): bool,
+                vol.Optional(CONF_THOUGHTS, default=True): bool,
             }
         )
 

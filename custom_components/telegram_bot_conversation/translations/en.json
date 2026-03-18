@@ -58,6 +58,7 @@
                     "disable_web_page_preview": "Disable web page preview",
                     "latex": "LaTeX",
                     "mermaid": "Mermaid",
+                    "thoughts": "Thoughts",
                     "tmpdir": "Temporary directory"
                 },
                 "data_description": {
@@ -66,6 +67,7 @@
                     "disable_web_page_preview": "Disable link previews for links in the message",
                     "latex": "Convert LaTeX to Unicode.",
                     "mermaid": "Render Mermaid diagrams in messages as images.",
+                    "thoughts": "Include the agent's thoughts as temporary messages before the actual response becomes available.",
                     "tmpdir": "Directory to store temporary files while they are being uploaded to Telegram. You can add a new directory in configuration.yaml as allowlist_external_dirs"
                 },
                 "description": "Configure options for Telegram Bot conversation."

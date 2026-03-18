@@ -6,6 +6,7 @@ from custom_components.telegram_bot_conversation.const import (
     CONF_DISABLE_WEB_PREV,
     CONF_LATEX,
     CONF_MERMAID,
+    CONF_THOUGHTS,
     CONF_TMPDIR,
 )
 
@@ -15,5 +16,6 @@ MOCK_OPTIONS_CONFIG = {
     CONF_LATEX: False,
     CONF_MERMAID: False,
     CONF_DISABLE_WEB_PREV: True,
+    CONF_THOUGHTS: False,
     CONF_TMPDIR: "/mnt/share/media",
 }
