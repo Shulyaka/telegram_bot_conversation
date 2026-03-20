@@ -71,7 +71,11 @@ case "$HA_VERSION" in
         ;;
 esac
 
-uv pip install $PIPARGS --requirement requirements.txt $HA_INSTALL_ARG
+uv pip install $PIPARGS --requirement requirements.txt $HA_INSTALL_ARG || {
+  echo "Error: Failed to install dependencies. Trying again with installing HA and requirements separately"
+  uv pip install $PIPARGS $HA_INSTALL_ARG
+  uv pip install $PIPARGS --requirement requirements.txt
+}
 
 echo "==> Installing pre-commit hooks..."
 pre-commit install
