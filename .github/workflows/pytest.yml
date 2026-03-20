@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ha-version: ['hacs', 'latest', 'dev']
+        ha-version: ['hacs', 'latest']
         python-version: ['3.14']
 
     steps:
