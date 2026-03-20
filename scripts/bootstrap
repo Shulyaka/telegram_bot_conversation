@@ -21,7 +21,7 @@ if [ -z "$HA_VERSION" ] || [ "$HA_VERSION" = "hacs" ]; then
 fi
 
 if [ -z "$HA_VERSION" ] || [ "$HA_VERSION" = "latest" ]; then
-  HA_VERSION=$(curl -fsSL https://pypi.org/pypi/homeassistant/json | sed -e 's/.*"version": *"\([^"]*\)".*/\1/')
+  HA_VERSION=$(curl -fsSL https://pypi.org/pypi/homeassistant/json | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' | head -1)
 fi
 
 if [ -z "$HA_VERSION" ]; then
@@ -61,10 +61,11 @@ case "$HA_VERSION" in
         PIPARGS="$PIPARGS --pre"
         HA_INSTALL_ARG="homeassistant==${HA_VERSION}"
         ;;
-    # release: digits and dots only
-    *[!0-9.]*)  # everything else is a git ref
+    # git ref: contains characters other than digits and dots
+    *[!0-9.]*)
         HA_INSTALL_ARG="git+https://github.com/home-assistant/core.git@${HA_VERSION}"
         ;;
+    # release: digits and dots only
     *)
         HA_INSTALL_ARG="homeassistant==${HA_VERSION}"
         ;;
