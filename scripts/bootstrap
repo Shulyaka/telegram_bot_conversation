@@ -16,10 +16,16 @@ if ! command -v uv >/dev/null 2>&1; then
   fi
 fi
 
-HA_VERSION="${HA_VERSION:-$(grep '"homeassistant"' hacs.json | head -1 | sed 's/.*"homeassistant"\s*:\s*"\([^"]*\)".*/\1/')}"
+if [ -z "$HA_VERSION" ] || [ "$HA_VERSION" = "hacs" ]; then
+  HA_VERSION=$(grep '"homeassistant"' hacs.json | head -1 | sed 's/.*"homeassistant"\s*:\s*"\([^"]*\)".*/\1/')
+fi
+
+if [ -z "$HA_VERSION" ] || [ "$HA_VERSION" = "latest" ]; then
+  HA_VERSION=$(curl -fsSL https://pypi.org/pypi/homeassistant/json | sed -e 's/.*"version": *"\([^"]*\)".*/\1/')
+fi
 
 if [ -z "$HA_VERSION" ]; then
-  echo "Error: HA_VERSION not set and could not be determined from hacs.json" >&2
+  echo "Error: Could not determine Home Assistant version. Please set the HA_VERSION environment variable."
   exit 1
 fi
 
@@ -49,7 +55,22 @@ if [ "$1" = "--full" ]; then
   PIPARGS="$PIPARGS --requirement $tmpdir/requirements_test_all.txt"
 fi
 
-uv pip install $PIPARGS --requirement requirements.txt "homeassistant==${HA_VERSION}"
+case "$HA_VERSION" in
+    # prerelease: contains a/b/rc suffix
+    *[0-9]a[0-9]*|*[0-9]b[0-9]*|*[0-9]rc[0-9]*)
+        PIPARGS="$PIPARGS --pre"
+        HA_INSTALL_ARG="homeassistant==${HA_VERSION}"
+        ;;
+    # release: digits and dots only
+    *[!0-9.]*)  # everything else is a git ref
+        HA_INSTALL_ARG="git+https://github.com/home-assistant/core.git@${HA_VERSION}"
+        ;;
+    *)
+        HA_INSTALL_ARG="homeassistant==${HA_VERSION}"
+        ;;
+esac
+
+uv pip install $PIPARGS --requirement requirements.txt $HA_INSTALL_ARG
 
 echo "==> Installing pre-commit hooks..."
 pre-commit install
