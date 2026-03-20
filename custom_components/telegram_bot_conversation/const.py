@@ -1,6 +1,5 @@
 """Constants for telegram_bot_conversation."""
 
-from datetime import timedelta
 from logging import Logger, getLogger
 
 LOGGER: Logger = getLogger(__package__)
@@ -19,8 +18,6 @@ CONF_TMPDIR = "tmpdir"
 CONF_DISABLE_WEB_PREV = "disable_web_page_preview"
 CONF_THOUGHTS = "thoughts"
 
-
-DEFAULT_CONVERSATION_TIMEOUT = timedelta(hours=24)
 
 REACTION_EMOJI = [
     "❤",

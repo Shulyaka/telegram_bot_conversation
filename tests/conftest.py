@@ -11,8 +11,15 @@ from telegram import AcceptedGiftTypes, Bot, Chat, ChatFullInfo, Message, User
 from telegram.constants import ChatType
 
 from custom_components.telegram_bot_conversation.const import (
+    CONF_ATTACHMENTS,
+    CONF_CONVERSATION_TIMEOUT,
+    CONF_DISABLE_WEB_PREV,
+    CONF_LATEX,
+    CONF_MERMAID,
     CONF_TELEGRAM_ENTRY,
     CONF_TELEGRAM_SUBENTRY,
+    CONF_THOUGHTS,
+    CONF_TMPDIR,
     CONF_USER,
     DOMAIN,
 )
@@ -30,8 +37,6 @@ from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_API_KEY, CONF_PLATFORM
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
-
-from .const import MOCK_OPTIONS_CONFIG
 
 
 # This fixture enables loading custom integrations in all tests.
@@ -165,8 +170,13 @@ async def mock_telegram_config_entry(
 
 
 @pytest.fixture
-async def mock_config_entry(hass, mock_telegram_config_entry) -> MockConfigEntry:
+async def mock_config_entry(
+    hass, hass_config_dir: str, mock_telegram_config_entry
+) -> MockConfigEntry:
     """Mock a config entry."""
+
+    for telegram_subentry in mock_telegram_config_entry.subentries.values():
+        await hass.auth.async_create_user(name=telegram_subentry.title)
 
     async def get_user_id(name: str) -> str | None:
         for user in await hass.auth.async_get_users():
@@ -178,7 +188,15 @@ async def mock_config_entry(hass, mock_telegram_config_entry) -> MockConfigEntry
         title=mock_telegram_config_entry.title,
         domain=DOMAIN,
         data={CONF_TELEGRAM_ENTRY: mock_telegram_config_entry.entry_id},
-        options=MOCK_OPTIONS_CONFIG,
+        options={
+            CONF_CONVERSATION_TIMEOUT: {"minutes": 15},
+            CONF_ATTACHMENTS: 15,
+            CONF_LATEX: False,
+            CONF_MERMAID: False,
+            CONF_DISABLE_WEB_PREV: True,
+            CONF_THOUGHTS: False,
+            CONF_TMPDIR: hass_config_dir + "/www",
+        },
         subentries_data=[
             {
                 "subentry_type": "telegram_id",
@@ -205,4 +223,8 @@ async def mock_config_entry(hass, mock_telegram_config_entry) -> MockConfigEntry
 @pytest.fixture(autouse=True)
 async def setup_ha(hass: HomeAssistant) -> None:
     """Set up Home Assistant."""
+    hass.config.allowlist_external_dirs = {
+        hass.config.path("www"),
+        *hass.config.media_dirs.values(),
+    }
     assert await async_setup_component(hass, "homeassistant", {})

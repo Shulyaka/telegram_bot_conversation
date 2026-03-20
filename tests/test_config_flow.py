@@ -31,7 +31,7 @@ def test_test(hass):
 async def test_config_flow(hass: HomeAssistant, mock_telegram_config_entry) -> None:
     """Test a successful config flow."""
     # Init first step
-    hass.config.allowlist_external_dirs = {"/mnt/share/media"}
+    hass.config.allowlist_external_dirs |= {"/mnt/share/media"}
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -70,7 +70,7 @@ async def test_options_flow(
     mock_config_entry,
 ) -> None:
     """Test a successful options flow."""
-    hass.config.allowlist_external_dirs = {"/mnt/share/media"}
+    hass.config.allowlist_external_dirs |= {"/mnt/share/media"}
     options = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
     assert options["type"] == data_entry_flow.FlowResultType.FORM
     assert options["step_id"] == "init"

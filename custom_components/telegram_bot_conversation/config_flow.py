@@ -81,7 +81,7 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
         return vol.Schema(
             {
                 vol.Required(
-                    CONF_CONVERSATION_TIMEOUT, default={"minutes": 30}
+                    CONF_CONVERSATION_TIMEOUT, default={"hours": 24}
                 ): selector.DurationSelector(),
                 vol.Required(
                     CONF_TMPDIR, default=self.hass.config.path("www")
