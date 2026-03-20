@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        ha-version: ['hacs', 'latest', 'dev']
         python-version: ['3.14']
 
     steps:
@@ -24,6 +25,8 @@ jobs:
 
     - name: Install requirements
       run: scripts/bootstrap
+      env:
+        HA_VERSION: ${{ matrix.ha-version }}
 
     - name: Pytest
       run: pytest --cov custom_components/telegram_bot_conversation --cov-report=term-missing $(test "$RUNNER_DEBUG" && echo "-vv")
@@ -32,7 +35,7 @@ jobs:
       uses: AndreMiras/coveralls-python-action@develop
       with:
         parallel: true
-        flag-name: ${{ matrix.python-version }}
+        flag-name: ${{ matrix.ha-version }}.${{ matrix.python-version }}
         debug: ${{ runner.debug && 'true' || 'false' }}
 
   coverage:
