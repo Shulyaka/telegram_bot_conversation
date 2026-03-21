@@ -267,8 +267,6 @@ async def async_setup_entry(
 ) -> bool:
     """Set up this integration using UI."""
 
-    # TODO: Check if a telegram subentry has been deleted and raise a repair issue
-
     try:
         data = await validate_data(hass, entry)
         options = await validate_options(hass, entry)

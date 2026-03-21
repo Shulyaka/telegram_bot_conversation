@@ -75,6 +75,7 @@ from homeassistant.helpers.chat_session import (
     async_get_chat_session,
 )
 from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.translation import async_get_cached_translations
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -88,6 +89,7 @@ from .const import (
     CONF_THOUGHTS,
     CONF_TMPDIR,
     CONF_USER,
+    DOMAIN,
     LOGGER,
     REACTION_EMOJI,
 )
@@ -101,6 +103,28 @@ except ImportError:
     SERVICE_SEND_MESSAGE_DRAFT = ATTR_DRAFT_ID = None
 
 MAX_TELEGRAM_LENGTH = 4096
+
+
+@callback
+def async_translate_message(
+    hass: HomeAssistant,
+    translation_key: str,
+    translation_placeholders: dict[str, str] | None = None,
+) -> str:
+    """Return a translated message."""
+    localize_key = f"component.{DOMAIN}.common.{translation_key}"
+    for language in (hass.config.language, "en"):
+        translations = async_get_cached_translations(
+            hass, language, category="common", integration=DOMAIN
+        )
+        if localize_key in translations:
+            message = translations[localize_key]
+            if not translation_placeholders:
+                return message
+            with contextlib.suppress(KeyError):
+                message = message.format(**translation_placeholders)
+            return message
+    return translation_key
 
 
 def get_telegram_service_target(
@@ -335,11 +359,14 @@ class TelegramChatHandler:
                     and current_conversation.sent_drafts is not None
                     and SERVICE_SEND_MESSAGE_DRAFT
                 ):
+                    thinking_message = async_translate_message(
+                        self.hass, translation_key="thinking"
+                    )
                     await self.hass.services.async_call(
                         TELEGRAM_DOMAIN,
                         SERVICE_SEND_MESSAGE_DRAFT,
                         {
-                            ATTR_MESSAGE: markdownify("_Thinking..._"),
+                            ATTR_MESSAGE: markdownify(thinking_message),
                             **get_telegram_service_target(
                                 self.chat_id, self.notify_entity_id
                             ),
@@ -754,12 +781,15 @@ class TelegramChatHandler:
 
         if error:
             if not isinstance(error, asyncio.CancelledError):
+                message = async_translate_message(
+                    self.hass,
+                    translation_key="conversation_error",
+                    translation_placeholders={"error": str(error)},
+                )
                 await self.async_handle_chat_log_event(
                     thread_id=thread_id,
                     event_type=ChatLogEventType.CONTENT_ADDED,
-                    data={
-                        "content": {"role": "assistant", "content": f"Error: {error!s}"}
-                    },
+                    data={"content": {"role": "assistant", "content": message}},
                     context=context,
                 )
             raise error
@@ -1024,18 +1054,28 @@ class TelegramChatHandler:
                         selected_agent,
                         self.chat_id,
                     )
+                    message = async_translate_message(
+                        self.hass,
+                        translation_key="conversation_agent_updated",
+                        translation_placeholders={
+                            "agent_id": agents.get(selected_agent, selected_agent)
+                        },
+                    )
                     await self.send_message(
-                        message=f"Conversation agent switched to `{
-                            agents.get(selected_agent, selected_agent)
-                        }`",
+                        message=message,
                         thread_id=thread_id,
                         context=context,
                     )
                 else:
+                    message = async_translate_message(
+                        self.hass,
+                        translation_key="current_conversation_agent",
+                        translation_placeholders={
+                            "agent_id": agents.get(current_agent, current_agent)
+                        },
+                    )
                     messages = await self.send_message(
-                        message=f"Current conversation agent: `{
-                            agents.get(current_agent, current_agent)
-                        }`",
+                        message=message,
                         thread_id=thread_id,
                         context=context,
                     )
@@ -1072,8 +1112,11 @@ class TelegramChatHandler:
 
                 self._reset_conversation_history(thread_id)
 
+                message = async_translate_message(
+                    self.hass, translation_key="new_conversation"
+                )
                 await self.send_message(
-                    message="New conversation started.",
+                    message=message,
                     thread_id=thread_id,
                     context=context,
                 )
