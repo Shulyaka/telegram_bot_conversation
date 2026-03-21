@@ -16,5 +16,5 @@
   "requirements": [
     "telegramify_markdown[mermaid]==1.1.1"
   ],
-  "version": "0.1.4"
+  "version": "0.1.5"
 }
