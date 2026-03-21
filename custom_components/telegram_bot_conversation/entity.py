@@ -84,9 +84,10 @@ from .const import (
     CONF_DISABLE_WEB_PREV,
     CONF_LATEX,
     CONF_MERMAID,
+    CONF_TELEGRAM_ENTRY,
     CONF_THOUGHTS,
     CONF_TMPDIR,
-    DEFAULT_CONVERSATION_TIMEOUT,
+    CONF_USER,
     LOGGER,
     REACTION_EMOJI,
 )
@@ -193,19 +194,18 @@ class TelegramChatHandler:
         hass: HomeAssistant,
         entry: ConfigEntry,
         chat_id: int,
-        telegram_entry_id: str,
-        user_id: str | None,
-        agent_id: str | None,
         notify_entity_id: str | None,
         subentry_id: str,
+        config: dict[str, Any],
     ) -> None:
         """Initialize the per-chat handler."""
         self.hass = hass
         self.entry = entry
         self.chat_id = chat_id
-        self.telegram_entry_id = telegram_entry_id
-        self.user_id = user_id
-        self.agent_id = agent_id
+        self.config = config
+        self.telegram_entry_id = config[CONF_TELEGRAM_ENTRY]
+        self.user_id = config.get(CONF_USER)
+        self.agent_id = config.get(CONF_CONVERSATION_AGENT)
         self.notify_entity_id = notify_entity_id
         self.subentry_id = subentry_id
         self.conversations: dict[int, ConversationConfig] = {}
@@ -218,15 +218,14 @@ class TelegramChatHandler:
 
         self.entry.async_on_unload(cancel_drafts)
 
-        options = entry.options
         self.extra_prompt = (
             "The user is interacting through Telegram. Markdown is supported. "
         )
-        if options.get(CONF_LATEX, True):
+        if config[CONF_LATEX]:
             self.extra_prompt += "Inline LaTeX rendering is supported. "
-        if options.get(CONF_ATTACHMENTS, True):
+        if config[CONF_ATTACHMENTS]:
             self.extra_prompt += "Long code blocks will be sent as files. "
-        if options.get(CONF_MERMAID, True):
+        if config[CONF_MERMAID]:
             self.extra_prompt += "Mermaid is supported as inline code blocks. "
         self.extra_prompt += (
             f"If the response message starts with any of {REACTION_EMOJI}, "
@@ -295,7 +294,7 @@ class TelegramChatHandler:
                     current_conversation.draft["content"]
                     or (
                         current_conversation.draft["thinking_content"]
-                        if self.entry.options.get(CONF_THOUGHTS, True)
+                        if self.config[CONF_THOUGHTS]
                         else ""
                     )
                     or ""
@@ -313,7 +312,7 @@ class TelegramChatHandler:
                 mode="wb",
                 prefix=Path(file_name).stem,
                 suffix=Path(file_name).suffix,
-                dir=self.entry.options.get(CONF_TMPDIR),
+                dir=self.config[CONF_TMPDIR],
                 delete=False,
             ) as temp_file:
                 temp_file.write(file_data)
@@ -323,11 +322,9 @@ class TelegramChatHandler:
 
         items = await telegramify(
             content=message,
-            latex_escape=self.entry.options.get(CONF_LATEX, True),
-            render_mermaid=False
-            if draft
-            else self.entry.options.get(CONF_MERMAID, True),
-            min_file_lines=0 if draft else self.entry.options.get(CONF_ATTACHMENTS, 20),
+            latex_escape=self.config[CONF_LATEX],
+            render_mermaid=False if draft else self.config[CONF_MERMAID],
+            min_file_lines=0 if draft else self.config[CONF_ATTACHMENTS],
             max_message_length=MAX_TELEGRAM_LENGTH,
         )
 
@@ -383,9 +380,7 @@ class TelegramChatHandler:
                             continue
 
                         disable_notification = draft or item is not items[-1]
-                        disable_web_prev = draft or self.entry.options.get(
-                            CONF_DISABLE_WEB_PREV, False
-                        )
+                        disable_web_prev = draft or self.config[CONF_DISABLE_WEB_PREV]
 
                         try:
                             message_id, last_text = next(sent_drafts_iter)
@@ -752,10 +747,7 @@ class TelegramChatHandler:
             # Flush any remaining delta
             chat_log_delta_listener(chat_log, {"role": None})
 
-        timeout = self.entry.options.get(
-            CONF_CONVERSATION_TIMEOUT,
-            {"seconds": DEFAULT_CONVERSATION_TIMEOUT.total_seconds()},
-        )
+        timeout = self.config[CONF_CONVERSATION_TIMEOUT]
         session.last_updated = (
             dt_util.utcnow() + timedelta(**timeout) - CONVERSATION_TIMEOUT
         )

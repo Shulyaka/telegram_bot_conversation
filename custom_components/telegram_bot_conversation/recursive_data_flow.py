@@ -4,23 +4,29 @@ from __future__ import annotations
 
 from collections.abc import Generator, Iterable, Mapping
 from functools import partial
+from types import MappingProxyType
 from typing import Any
 
 import voluptuous as vol
 
 from homeassistant.config_entries import (
+    HANDLERS,
+    SOURCE_RECONFIGURE,
     ConfigEntry,
     ConfigEntryState,
     ConfigError,
     ConfigFlow,
+    ConfigFlowContext,
     ConfigFlowResult,
     ConfigSubentryData,
     ConfigSubentryFlow,
     OptionsFlow,
+    SubentryFlowContext,
     SubentryFlowResult,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import AbortFlow, section
+from homeassistant.exceptions import HomeAssistantError
 
 
 class AbortRecursiveFlow(AbortFlow):
@@ -55,10 +61,14 @@ class RecursiveBaseFlow:
 
     async def get_data_schema(self) -> vol.Schema:
         """Get data schema."""
+        if hasattr(self, "data_schema") and self.data_schema is not None:
+            return self.data_schema
         raise NotImplementedError
 
     async def get_options_schema(self) -> vol.Schema:
         """Get options schema."""
+        if hasattr(self, "options_schema") and self.options_schema is not None:
+            return self.options_schema
         raise NotImplementedError
 
     async def get_default_subentries(self) -> Iterable[ConfigSubentryData] | None:
@@ -67,6 +77,12 @@ class RecursiveBaseFlow:
 
     async def get_subentry_schema(self, subentry_type: str) -> vol.Schema:
         """Get subentry schema."""
+        if (
+            hasattr(self, "subentries_schema")
+            and self.subentries_schema is not None
+            and subentry_type in self.subentries_schema
+        ):
+            return self.subentries_schema[subentry_type]
         raise NotImplementedError
 
     @classmethod
@@ -410,7 +426,7 @@ class RecursiveConfigFlow(RecursiveDataFlow, ConfigFlow):
             return getattr(obj, "__func__", obj)
 
         if cls.subentries_schema is not None:
-            subentries_schema = cls.options_schema
+            subentries_schema = cls.subentries_schema
         elif _func(cls.get_subentries) is not _func(RecursiveBaseFlow.get_subentries):
             subentries_schema = dict.fromkeys(cls.get_subentries(config_entry))
         else:
@@ -425,3 +441,85 @@ class RecursiveConfigFlow(RecursiveDataFlow, ConfigFlow):
         return {
             key: subentry_factory(schema) for key, schema in subentries_schema.items()
         }
+
+
+async def validate_data(
+    hass: HomeAssistant, config_entry: ConfigEntry
+) -> MappingProxyType[str, Any]:
+    """Validate config data."""
+    handler = HANDLERS.get(config_entry.domain)
+    if handler is None or not issubclass(handler, RecursiveBaseFlow):
+        raise NotImplementedError(
+            f"Handler for domain {config_entry.domain} is not a RecursiveBaseFlow"
+        )
+    flow = handler()
+    flow.hass = hass
+    flow.handler = config_entry.entry_id
+    flow.context = ConfigFlowContext(
+        source=SOURCE_RECONFIGURE,
+        show_advanced_options=True,
+        entry_id=config_entry.entry_id,
+    )
+    flow.data = config_entry.data
+    flow.options = config_entry.options
+    try:
+        schema = await flow.get_data_schema()
+        return MappingProxyType(schema(config_entry.data.copy()))
+    except (AbortRecursiveFlow, vol.MultipleInvalid) as err:
+        raise HomeAssistantError(str(err)) from err
+
+
+async def validate_options(
+    hass: HomeAssistant, config_entry: ConfigEntry
+) -> MappingProxyType[str, Any]:
+    """Validate options."""
+    handler = HANDLERS.get(config_entry.domain)
+    if handler is None or not issubclass(handler, RecursiveBaseFlow):
+        raise NotImplementedError(
+            f"Handler for domain {config_entry.domain} is not a RecursiveBaseFlow"
+        )
+    flow = handler.async_get_options_flow(config_entry)
+    flow.hass = hass
+    flow.handler = config_entry.entry_id
+    flow.context = ConfigFlowContext(
+        source=SOURCE_RECONFIGURE,
+        show_advanced_options=True,
+        entry_id=config_entry.entry_id,
+    )
+    flow.data = config_entry.data
+    flow.options = config_entry.options
+    try:
+        schema = await flow.get_options_schema()
+        return MappingProxyType(schema(config_entry.options.copy()))
+    except (AbortRecursiveFlow, vol.MultipleInvalid) as err:
+        raise HomeAssistantError(str(err)) from err
+
+
+async def validate_subentry_data(
+    hass: HomeAssistant, config_entry: ConfigEntry, subentry_id: str
+) -> MappingProxyType[str, Any]:
+    """Validate subentry config."""
+    handler = HANDLERS.get(config_entry.domain)
+    if handler is None or not issubclass(handler, RecursiveBaseFlow):
+        raise NotImplementedError(
+            f"Handler for domain {config_entry.domain} is not a RecursiveBaseFlow"
+        )
+    subentry = config_entry.subentries[subentry_id]
+    flow = handler.async_get_supported_subentry_types(config_entry)[
+        subentry.subentry_type
+    ]()
+    flow.hass = hass
+    flow.handler = config_entry.entry_id, subentry.subentry_type
+    flow.context = SubentryFlowContext(
+        source=SOURCE_RECONFIGURE,
+        show_advanced_options=True,
+        entry_id=config_entry.entry_id,
+        subentry_id=subentry.subentry_id,
+    )
+    flow.data = config_entry.data
+    flow.options = subentry.data
+    try:
+        schema = await flow.get_subentry_schema(subentry.subentry_type)
+        return MappingProxyType(schema(subentry.data.copy()))
+    except (AbortRecursiveFlow, vol.MultipleInvalid) as err:
+        raise HomeAssistantError(str(err)) from err

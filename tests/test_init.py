@@ -6,6 +6,11 @@ from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.telegram_bot_conversation import TelegramBotConversationHandler
 from custom_components.telegram_bot_conversation.const import CONF_TELEGRAM_SUBENTRY
+from custom_components.telegram_bot_conversation.recursive_data_flow import (
+    validate_data,
+    validate_options,
+    validate_subentry_data,
+)
 from homeassistant.components.conversation import (
     AssistantContent,
     UserContent,
@@ -21,10 +26,25 @@ from homeassistant.components.telegram_bot.const import (
     DOMAIN as TELEGRAM_DOMAIN,
     SERVICE_SEND_MESSAGE,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.chat_session import DATA_CHAT_SESSION, async_get_chat_session
+
+
+async def _get_config(
+    hass: HomeAssistant, config_entry: ConfigEntry
+) -> tuple[dict, dict, dict]:
+    """Extract the main config, subentry data, and options from a config entry."""
+    data = await validate_data(hass, config_entry)
+    options = await validate_options(hass, config_entry)
+    subentry_data = {
+        subentry_id: await validate_subentry_data(hass, config_entry, subentry_id)
+        for subentry_id, subentry in config_entry.subentries.items()
+        if subentry.subentry_type == "telegram_id"
+    }
+    return data, options, subentry_data
 
 
 async def test_handler_resolves_notify_entity_id(
@@ -33,7 +53,9 @@ async def test_handler_resolves_notify_entity_id(
     mock_config_entry,
 ) -> None:
     """Test that chat handler stores the telegram notify entity ID."""
-    handler = TelegramBotConversationHandler(hass, mock_config_entry)
+    handler = TelegramBotConversationHandler(
+        hass, mock_config_entry, *await _get_config(hass, mock_config_entry)
+    )
     entity_registry = er.async_get(hass)
 
     telegram_subentry_id, telegram_subentry = next(
@@ -64,7 +86,9 @@ async def test_send_message_uses_notify_entity_id(
     mock_config_entry,
 ) -> None:
     """Test that send_message targets the telegram notify entity when available."""
-    handler = TelegramBotConversationHandler(hass, mock_config_entry)
+    handler = TelegramBotConversationHandler(
+        hass, mock_config_entry, *await _get_config(hass, mock_config_entry)
+    )
 
     # Pick the first chat to test with
     _, telegram_subentry = next(iter(mock_telegram_config_entry.subentries.items()))
@@ -100,7 +124,9 @@ async def test_new_command_clears_history_immediately(
     mock_config_entry,
 ) -> None:
     """Test that the /new command drops the stored session and chat log right away."""
-    handler = TelegramBotConversationHandler(hass, mock_config_entry)
+    handler = TelegramBotConversationHandler(
+        hass, mock_config_entry, *await _get_config(hass, mock_config_entry)
+    )
 
     _, telegram_subentry = next(iter(mock_telegram_config_entry.subentries.items()))
     chat_id = telegram_subentry.data[CONF_CHAT_ID]

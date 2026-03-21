@@ -34,17 +34,12 @@ from homeassistant.components.telegram_bot.const import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers import entity_registry as er
+from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.helpers import entity_registry as er, issue_registry as ir
 
-from .const import (
-    CONF_CONVERSATION_AGENT,
-    CONF_TELEGRAM_ENTRY,
-    CONF_TELEGRAM_SUBENTRY,
-    CONF_USER,
-    LOGGER,
-)
+from .const import CONF_TELEGRAM_ENTRY, CONF_TELEGRAM_SUBENTRY, DOMAIN, LOGGER
 from .entity import TelegramChatHandler
+from .recursive_data_flow import validate_data, validate_options, validate_subentry_data
 
 type TelegramBotConversationConfigEntry = ConfigEntry[None]
 
@@ -56,23 +51,31 @@ class TelegramBotConversationHandler:
         self,
         hass: HomeAssistant,
         entry: TelegramBotConversationConfigEntry,
+        data: dict[str, Any],
+        options: dict[str, Any],
+        subentries_data: dict[str, dict[str, Any]],
     ) -> None:
         """Initialize the handler."""
         self.hass = hass
         self.entry = entry
-        self.telegram_entry_id = entry.data[CONF_TELEGRAM_ENTRY]
+        self.telegram_entry_id = data[CONF_TELEGRAM_ENTRY]
 
         telegram_entry = hass.config_entries.async_get_entry(self.telegram_entry_id)
         if not telegram_entry:
+            # Create an issue so the user gets actionable guidance instead of a reload loop
+            hass.async_create_task(
+                ir.async_create_issue(
+                    hass,
+                    DOMAIN,
+                    "all_telegram_entries_configured",
+                    translation_key="all_telegram_entries_configured",
+                    severity=ir.IssueSeverity.ERROR,
+                )
+            )
             raise ConfigEntryNotReady("Telegram entry not found")
 
-        # TODO(@Shulyaka): Check if a telegram subentry has been deleted and raise
-        # a repair issue
-
         linked_telegram_subentries = {
-            s.data[CONF_TELEGRAM_SUBENTRY]
-            for s in entry.subentries.values()
-            if s.subentry_type == "telegram_id"
+            data[CONF_TELEGRAM_SUBENTRY] for data in subentries_data.values()
         }
 
         telegram_id_map = {
@@ -93,10 +96,8 @@ class TelegramBotConversationHandler:
         }
 
         self.chat_handlers: dict[int, TelegramChatHandler] = {}
-        for subentry_id, subentry in entry.subentries.items():
-            if subentry.subentry_type != "telegram_id":
-                continue
-            tg_sub = subentry.data.get(CONF_TELEGRAM_SUBENTRY)
+        for subentry_id, subentry_data in subentries_data.items():
+            tg_sub = subentry_data[CONF_TELEGRAM_SUBENTRY]
             if tg_sub not in telegram_id_map:
                 continue
             chat_id = telegram_id_map[tg_sub]
@@ -104,11 +105,9 @@ class TelegramBotConversationHandler:
                 hass=hass,
                 entry=entry,
                 chat_id=chat_id,
-                telegram_entry_id=self.telegram_entry_id,
-                user_id=subentry.data.get(CONF_USER),
-                agent_id=subentry.data.get(CONF_CONVERSATION_AGENT),
                 notify_entity_id=telegram_notify_map.get(tg_sub),
                 subentry_id=subentry_id,
+                config=data | options | subentry_data,
             )
 
         self._register_listeners()
@@ -261,7 +260,35 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: TelegramBotConversationConfigEntry
 ) -> bool:
     """Set up this integration using UI."""
-    TelegramBotConversationHandler(hass, entry)
+
+    # TODO: Check if a telegram subentry has been deleted and raise a repair issue
+
+    try:
+        data = await validate_data(hass, entry)
+        options = await validate_options(hass, entry)
+        subentries_data = {
+            subentry_id: await validate_subentry_data(hass, entry, subentry_id)
+            for subentry_id, subentry in entry.subentries.items()
+            if subentry.subentry_type == "telegram_id"
+        }
+    except HomeAssistantError as e:
+        LOGGER.error("Configuration validation error: %s", e)
+
+        if str(e) in ("no_telegram_bot_entries", "all_telegram_entries_configured"):
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                str(e),
+                is_fixable=False,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key=str(e),
+            )
+
+        raise ConfigEntryNotReady(f"Configuration error: {e}") from e
+
+    TelegramBotConversationHandler(
+        hass, entry, data=data, options=options, subentries_data=subentries_data
+    )
 
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
