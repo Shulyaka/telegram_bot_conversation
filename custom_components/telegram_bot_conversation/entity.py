@@ -49,6 +49,7 @@ from homeassistant.components.telegram_bot.const import (
     ATTR_PARSER,
     ATTR_REACTION,
     ATTR_TEXT,
+    ATTR_USER_ID,
     CHAT_ACTION_TYPING,
     CONF_CONFIG_ENTRY_ID,
     DOMAIN as TELEGRAM_DOMAIN,
@@ -220,6 +221,7 @@ class TelegramChatHandler:
         chat_id: int,
         notify_entity_id: str | None,
         subentry_id: str,
+        user_id_map: dict[int, str],
         config: dict[str, Any],
     ) -> None:
         """Initialize the per-chat handler."""
@@ -229,6 +231,7 @@ class TelegramChatHandler:
         self.config = config
         self.telegram_entry_id = config[CONF_TELEGRAM_ENTRY]
         self.user_id = config.get(CONF_USER)
+        self.user_id_map = user_id_map
         self.agent_id = config.get(CONF_CONVERSATION_AGENT)
         self.notify_entity_id = notify_entity_id
         self.subentry_id = subentry_id
@@ -242,9 +245,10 @@ class TelegramChatHandler:
 
         self.entry.async_on_unload(cancel_drafts)
 
-        self.extra_prompt = (
-            "The user is interacting through Telegram. Markdown is supported. "
-        )
+        self.extra_prompt = "The user is interacting through Telegram"
+        if chat_id < 0:
+            self.extra_prompt += " in a group chat"
+        self.extra_prompt += ". Markdown is fully supported. "
         if config[CONF_LATEX]:
             self.extra_prompt += "Inline LaTeX rendering is supported. "
         if config[CONF_ATTACHMENTS]:
@@ -263,12 +267,28 @@ class TelegramChatHandler:
             conversation_id += f"_{thread_id}"
         return conversation_id
 
+    def _get_context(
+        self, context: Context | None = None, effective_user_id: int | None = None
+    ) -> Context:
+        """Get a context with the user_id set."""
+        if context is None:
+            context = Context()
+        if (
+            context.user_id is None
+            and effective_user_id is not None
+            and effective_user_id in self.user_id_map
+        ):
+            context.user_id = self.user_id_map[effective_user_id]
+        if context.user_id is None:
+            context.user_id = self.user_id
+        return context
+
     @callback
     def _async_schedule_update_draft(
         self,
         thread_id: int,
         delay: float,
-        context: Context | None = None,
+        context: Context,
     ) -> CALLBACK_TYPE:
         """Schedule a draft update on the Home Assistant event loop."""
 
@@ -294,11 +314,11 @@ class TelegramChatHandler:
 
         return async_call_later(self.hass, delay, _run_update_draft)
 
-    async def send_message(  # noqa: C901
+    async def send_message(
         self,
+        context: Context,
         message: str = "",
         thread_id: int = 0,
-        context: Context | None = None,
         draft: bool = False,
     ) -> dict[str, list[dict[str, int]]]:
         """Send telegram message, taking care of formatting, length, and drafts."""
@@ -308,9 +328,6 @@ class TelegramChatHandler:
         if current_conversation.draft_cancel is not None:
             current_conversation.draft_cancel()
         current_conversation.draft_cancel = None
-
-        if context is None:
-            context = Context()
 
         if draft:
             message = (
@@ -358,6 +375,7 @@ class TelegramChatHandler:
                     not draft
                     and current_conversation.sent_drafts is not None
                     and SERVICE_SEND_MESSAGE_DRAFT
+                    and self.chat_id > 0
                 ):
                     thinking_message = async_translate_message(
                         self.hass, translation_key="thinking"
@@ -389,7 +407,9 @@ class TelegramChatHandler:
                 ) as watcher:
                     # All messages but the last are real messages
                     for item in (
-                        items[:-1] if draft and SERVICE_SEND_MESSAGE_DRAFT else items
+                        items[:-1]
+                        if draft and SERVICE_SEND_MESSAGE_DRAFT and self.chat_id > 0
+                        else items
                     ):
                         if item.content_type == ContentType.TEXT:
                             text = entities_to_markdownv2(item.text, item.entities)
@@ -566,7 +586,7 @@ class TelegramChatHandler:
 
                     current_conversation.sent_drafts.pop(message_id, None)
 
-                if draft and SERVICE_SEND_MESSAGE_DRAFT and items:
+                if draft and SERVICE_SEND_MESSAGE_DRAFT and self.chat_id > 0 and items:
                     item = items[-1]
                     text = entities_to_markdownv2(item.text, item.entities)
 
@@ -670,9 +690,7 @@ class TelegramChatHandler:
 
     async def async_process_message(self, event: Event) -> None:
         """Handle conversation task."""
-        context = event.context
-        if context.user_id is None:
-            context.user_id = self.user_id
+        context = self._get_context(event.context, event.data.get(ATTR_USER_ID))
 
         thread_id = event.data.get(ATTR_MESSAGE_THREAD_ID) or 0
         conversation_id = self._get_conversation_id(thread_id)
@@ -1123,12 +1141,10 @@ class TelegramChatHandler:
 
     async def async_handle_command(self, event: Event) -> None:
         """Handle command events."""
-        context = event.context
-        if context.user_id is None:
-            context.user_id = self.user_id
+        context = self._get_context(event.context, event.data.get(ATTR_USER_ID))
         await self.async_process_command(
             event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
-            event.data["command"],
+            event.data["command"].split("@")[0],
             event.data.get("args", []),
             context,
         )
@@ -1136,9 +1152,7 @@ class TelegramChatHandler:
     async def async_handle_callback(self, event: Event) -> None:
         """Handle callback query events."""
         LOGGER.debug("callback_event data: %s", event.data)
-        context = event.context
-        if context.user_id is None:
-            context.user_id = self.user_id
+        context = self._get_context(event.context, event.data.get(ATTR_USER_ID))
         args = event.data.get("data", "").split(" ")
 
         await self.async_process_command(

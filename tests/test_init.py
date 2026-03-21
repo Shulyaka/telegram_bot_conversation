@@ -117,10 +117,7 @@ async def test_send_message_uses_notify_entity_id(
         response={"chats": []},
     )
 
-    await chat_handler.send_message(
-        message="Hello",
-        thread_id=0,
-    )
+    await chat_handler.send_message(message="Hello", thread_id=0, context=Context())
 
     assert len(calls) == 1
     call = calls[0]
