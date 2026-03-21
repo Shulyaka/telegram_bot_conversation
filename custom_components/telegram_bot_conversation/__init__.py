@@ -33,7 +33,7 @@ from homeassistant.components.telegram_bot.const import (
     SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import Context, Event, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import entity_registry as er, issue_registry as ir
 
@@ -209,7 +209,7 @@ class TelegramBotConversationHandler:
 
         self.entry.async_create_task(
             self.hass,
-            handler.async_handle_chat_log_event(thread_id, event_type, data),
+            handler.async_handle_chat_log_event(thread_id, event_type, data, Context()),
             "async_handle_chat_log_event",
         ).add_done_callback(log_exceptions)
 

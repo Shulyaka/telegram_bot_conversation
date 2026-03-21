@@ -967,9 +967,11 @@ class TelegramChatHandler:
         thread_id: int,
         event_type: ChatLogEventType,
         data: dict[str, Any],
-        context: Context | None = None,
+        context: Context,
     ) -> None:
         """Handle chat log events."""
+        # async_subscribe_chat_logs does not provide context, ensure user_id is set
+        context = self._get_context(context)
         current_conversation = self.conversations[thread_id]
         async with current_conversation.content_lock:
             if (
