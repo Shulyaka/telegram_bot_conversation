@@ -59,6 +59,13 @@
             "title": "No Telegram Bot config entries found"
         }
     },
+    "messages": {
+        "conversation_agent_updated": "Conversation agent switched to: `{agent_id}`",
+        "conversation_error": "Error: {error}",
+        "current_conversation_agent": "Current conversation agent: `{agent_id}`",
+        "new_conversation": "New conversation started.",
+        "thinking": "_Thinking..._"
+    },
     "options": {
         "step": {
             "init": {
