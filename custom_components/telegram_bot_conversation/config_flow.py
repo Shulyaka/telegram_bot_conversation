@@ -166,21 +166,32 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
             if not user.system_generated
         ]
 
-        user_id = vol.UNDEFINED
-        for user in await self.hass.auth.async_get_users():
-            if (
-                user.name == telegram_subentry_options[0]["label"]
-                and not user.system_generated
-            ):
-                user_id = user.id
+        telegram_subentry_label = None
+        if (
+            self.source != "user"
+            and (
+                current_telegram_subentry_id
+                := self._get_reconfigure_subentry().data.get(CONF_TELEGRAM_SUBENTRY)
+            )
+            and (
+                current_telegram_subentry := telegram_entry.subentries.get(
+                    current_telegram_subentry_id
+                )
+            )
+        ):
+            telegram_subentry_label = current_telegram_subentry.title
+        if telegram_subentry_label is None:
+            telegram_subentry_label = telegram_subentry_options[0]["label"]
+
+        default_user = vol.UNDEFINED
+        for user in user_options:
+            if user["label"] == telegram_subentry_label:
+                default_user = user["value"]
                 break
-        if user_id is vol.UNDEFINED:
-            for user in await self.hass.auth.async_get_users():
-                if (
-                    telegram_subentry_options[0]["label"].startswith(user.name)
-                    and not user.system_generated
-                ):
-                    user_id = user.id
+        if default_user is vol.UNDEFINED:
+            for user in user_options:
+                if telegram_subentry_label.startswith(user["label"]):
+                    default_user = user["value"]
                     break
 
         return vol.Schema(
@@ -195,7 +206,7 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(
                     CONF_USER,
-                    default=user_id,
+                    default=default_user,
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=user_options,

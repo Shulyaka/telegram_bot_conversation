@@ -330,7 +330,7 @@ async def async_migrate_entry(
         options = entry.options.copy()
         hass.config_entries.async_update_entry(
             entry,
-            options={CONF_TMPDIR: options.pop(CONF_TMPDIR, None)},
+            options={CONF_TMPDIR: options.pop(CONF_TMPDIR, hass.config.path("www"))},
             minor_version=2,
         )
         for subentry in entry.subentries.values():
