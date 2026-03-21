@@ -106,6 +106,7 @@ class TelegramBotConversationHandler:
             telegram_id_map[data[CONF_TELEGRAM_SUBENTRY]]: data.get(CONF_USER)
             for data in subentries_data.values()
             if data.get(CONF_USER) is not None
+            and data.get(CONF_TELEGRAM_SUBENTRY) in telegram_id_map
         }
 
         self.chat_handlers: dict[int, TelegramChatHandler] = {}
