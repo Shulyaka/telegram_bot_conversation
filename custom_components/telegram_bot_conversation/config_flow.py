@@ -37,7 +37,7 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
     """Handle config and options flow for Telegram Bot Conversation."""
 
     VERSION = 1
-    MINOR_VERSION = 1
+    MINOR_VERSION = 2
 
     async def async_validate_input(
         self, step_id: str, user_input: dict[str, Any]
@@ -81,9 +81,6 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
         return vol.Schema(
             {
                 vol.Required(
-                    CONF_CONVERSATION_TIMEOUT, default={"hours": 24}
-                ): selector.DurationSelector(),
-                vol.Required(
                     CONF_TMPDIR, default=self.hass.config.path("www")
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
@@ -91,11 +88,6 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                vol.Optional(CONF_ATTACHMENTS, default=20): cv.positive_int,
-                vol.Optional(CONF_LATEX, default=True): bool,
-                vol.Optional(CONF_MERMAID, default=True): bool,
-                vol.Optional(CONF_DISABLE_WEB_PREV, default=False): bool,
-                vol.Optional(CONF_THOUGHTS, default=True): bool,
             }
         )
 
@@ -174,6 +166,34 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
             if not user.system_generated
         ]
 
+        telegram_subentry_label = None
+        if (
+            self.source != "user"
+            and (
+                current_telegram_subentry_id
+                := self._get_reconfigure_subentry().data.get(CONF_TELEGRAM_SUBENTRY)
+            )
+            and (
+                current_telegram_subentry := telegram_entry.subentries.get(
+                    current_telegram_subentry_id
+                )
+            )
+        ):
+            telegram_subentry_label = current_telegram_subentry.title
+        if telegram_subentry_label is None:
+            telegram_subentry_label = telegram_subentry_options[0]["label"]
+
+        default_user = vol.UNDEFINED
+        for user in user_options:
+            if user["label"] == telegram_subentry_label:
+                default_user = user["value"]
+                break
+        if default_user is vol.UNDEFINED:
+            for user in user_options:
+                if telegram_subentry_label.startswith(user["label"]):
+                    default_user = user["value"]
+                    break
+
         return vol.Schema(
             {
                 vol.Required(CONF_TELEGRAM_SUBENTRY): selector.SelectSelector(
@@ -186,10 +206,7 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(
                     CONF_USER,
-                    default=await self._get_user_id(
-                        telegram_subentry_options[0]["label"]
-                    )
-                    or vol.UNDEFINED,
+                    default=default_user,
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=user_options,
@@ -201,6 +218,14 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     CONF_CONVERSATION_AGENT
                 ): selector.ConversationAgentSelector(),
+                vol.Optional(
+                    CONF_CONVERSATION_TIMEOUT, default={"hours": 24}
+                ): selector.DurationSelector(),
+                vol.Optional(CONF_ATTACHMENTS, default=20): cv.positive_int,
+                vol.Optional(CONF_LATEX, default=True): bool,
+                vol.Optional(CONF_MERMAID, default=True): bool,
+                vol.Optional(CONF_DISABLE_WEB_PREV, default=False): bool,
+                vol.Optional(CONF_THOUGHTS, default=True): bool,
             }
         )
 
@@ -214,19 +239,10 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
             return [
                 {
                     "subentry_type": "telegram_id",
-                    "data": {
-                        CONF_TELEGRAM_SUBENTRY: telegram_subentry_id,
-                        CONF_USER: await self._get_user_id(telegram_subentry.title),
-                    },
+                    "data": {CONF_TELEGRAM_SUBENTRY: telegram_subentry_id},
                     "title": telegram_subentry.title,
                     "unique_id": None,
                 }
                 for telegram_subentry_id, telegram_subentry in telegram_entry.subentries.items()
             ] or None
-        return None
-
-    async def _get_user_id(self, name: str) -> str | None:
-        for user in await self.hass.auth.async_get_users():
-            if user.name == name and not user.system_generated:
-                return user.id
         return None

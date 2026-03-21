@@ -37,7 +37,13 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import entity_registry as er, issue_registry as ir
 
-from .const import CONF_TELEGRAM_ENTRY, CONF_TELEGRAM_SUBENTRY, DOMAIN, LOGGER
+from .const import (
+    CONF_TELEGRAM_ENTRY,
+    CONF_TELEGRAM_SUBENTRY,
+    CONF_TMPDIR,
+    DOMAIN,
+    LOGGER,
+)
 from .entity import TelegramChatHandler
 from .recursive_data_flow import validate_data, validate_options, validate_subentry_data
 
@@ -307,3 +313,33 @@ async def async_update_options(
 ) -> None:
     """Update options."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_migrate_entry(
+    hass: HomeAssistant, entry: TelegramBotConversationConfigEntry
+) -> bool:
+    """Migrate entry."""
+    LOGGER.debug("Migrating from version %s:%s", entry.version, entry.minor_version)
+
+    if entry.version > 1:
+        # This means the user has downgraded from a future version
+        return False
+
+    if entry.version == 1 and entry.minor_version == 1:
+        # Move customization options to subentries
+        options = entry.options.copy()
+        hass.config_entries.async_update_entry(
+            entry,
+            options={CONF_TMPDIR: options.pop(CONF_TMPDIR, hass.config.path("www"))},
+            minor_version=2,
+        )
+        for subentry in entry.subentries.values():
+            data = subentry.data.copy()
+            data.update(options)
+            hass.config_entries.async_update_subentry(entry, subentry, data=data)
+
+    LOGGER.debug(
+        "Migration to version %s:%s successful", entry.version, entry.minor_version
+    )
+
+    return True

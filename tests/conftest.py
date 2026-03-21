@@ -171,7 +171,7 @@ async def mock_telegram_config_entry(
 
 @pytest.fixture
 async def mock_config_entry(
-    hass, hass_config_dir: str, mock_telegram_config_entry
+    hass, hass_config_dir: str, mock_telegram_config_entry: MockConfigEntry
 ) -> MockConfigEntry:
     """Mock a config entry."""
 
@@ -189,12 +189,6 @@ async def mock_config_entry(
         domain=DOMAIN,
         data={CONF_TELEGRAM_ENTRY: mock_telegram_config_entry.entry_id},
         options={
-            CONF_CONVERSATION_TIMEOUT: {"minutes": 15},
-            CONF_ATTACHMENTS: 15,
-            CONF_LATEX: False,
-            CONF_MERMAID: False,
-            CONF_DISABLE_WEB_PREV: True,
-            CONF_THOUGHTS: False,
             CONF_TMPDIR: hass_config_dir + "/www",
         },
         subentries_data=[
@@ -203,6 +197,12 @@ async def mock_config_entry(
                 "data": {
                     CONF_TELEGRAM_SUBENTRY: telegram_subentry_id,
                     CONF_USER: await get_user_id(telegram_subentry.title),
+                    CONF_CONVERSATION_TIMEOUT: {"minutes": 15},
+                    CONF_ATTACHMENTS: 15,
+                    CONF_LATEX: False,
+                    CONF_MERMAID: False,
+                    CONF_DISABLE_WEB_PREV: True,
+                    CONF_THOUGHTS: False,
                 },
                 "title": telegram_subentry.title,
                 "unique_id": None,
