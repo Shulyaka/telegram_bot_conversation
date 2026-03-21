@@ -21,4 +21,5 @@ This is a Home Assistant custom integration that allows you to use the [Telegram
 - You can see the summary of the agent's thoughts and even interrupt the response early
 - Code blocks can be sent as files, mermaid diagrams can be rendered into images, and LaTeX symbols can be translated into Unicode
 - Attachments are supported if your agent supports them (usually only images and pdf, and only for the last message)
+- Group chats are supported (requires separate config subentry for both `telegram_bot` and `telegram_bot_conversation`).
 - Partial support for threaded bots (awaiting `telegram_bot` for full support)

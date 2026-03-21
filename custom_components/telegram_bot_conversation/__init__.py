@@ -23,7 +23,7 @@ from homeassistant.components.conversation.const import ChatLogEventType
 from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
 from homeassistant.components.telegram_bot.const import (
     ATTR_CHAT_ID,
-    ATTR_USER_ID,
+    ATTR_USERNAME,
     CONF_CHAT_ID,
     CONF_CONFIG_ENTRY_ID,
     EVENT_TELEGRAM_ATTACHMENT,
@@ -33,7 +33,7 @@ from homeassistant.components.telegram_bot.const import (
     SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import Context, Event, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import entity_registry as er, issue_registry as ir
 
@@ -41,6 +41,7 @@ from .const import (
     CONF_TELEGRAM_ENTRY,
     CONF_TELEGRAM_SUBENTRY,
     CONF_TMPDIR,
+    CONF_USER,
     DOMAIN,
     LOGGER,
 )
@@ -101,6 +102,13 @@ class TelegramBotConversationHandler:
             and entity_entry.domain == NOTIFY_DOMAIN
         }
 
+        user_id_map = {
+            telegram_id_map[data[CONF_TELEGRAM_SUBENTRY]]: data.get(CONF_USER)
+            for data in subentries_data.values()
+            if data.get(CONF_USER) is not None
+            and data.get(CONF_TELEGRAM_SUBENTRY) in telegram_id_map
+        }
+
         self.chat_handlers: dict[int, TelegramChatHandler] = {}
         for subentry_id, subentry_data in subentries_data.items():
             tg_sub = subentry_data[CONF_TELEGRAM_SUBENTRY]
@@ -113,6 +121,7 @@ class TelegramBotConversationHandler:
                 chat_id=chat_id,
                 notify_entity_id=telegram_notify_map.get(tg_sub),
                 subentry_id=subentry_id,
+                user_id_map=user_id_map,
                 config=data | options | subentry_data,
             )
 
@@ -200,7 +209,7 @@ class TelegramBotConversationHandler:
 
         self.entry.async_create_task(
             self.hass,
-            handler.async_handle_chat_log_event(thread_id, event_type, data),
+            handler.async_handle_chat_log_event(thread_id, event_type, data, Context()),
             "async_handle_chat_log_event",
         ).add_done_callback(log_exceptions)
 
@@ -218,7 +227,6 @@ class TelegramBotConversationHandler:
             event_data.get("bot", {}).get(CONF_CONFIG_ENTRY_ID)
             == self.telegram_entry_id
             and event_data.get(ATTR_CHAT_ID) in self.chat_handlers
-            and event_data.get(ATTR_CHAT_ID) == event_data.get(ATTR_USER_ID)
         )
 
     async def async_handle_command(self, event: Event) -> None:
@@ -233,12 +241,17 @@ class TelegramBotConversationHandler:
     @callback
     def command_events_filter(self, event_data: Mapping[str, Any]) -> bool:
         """Filter command events."""
+        command = event_data.get("command", "")
+        command_parts = command.split("@")
+        if len(command_parts) == 2:
+            if command_parts[1] != event_data.get("bot", {}).get(ATTR_USERNAME):
+                return False
+            command = command_parts[0]
         return (
-            event_data.get("command") in ["/model", "/new"]
+            command in ("/model", "/new")
             and event_data.get("bot", {}).get(CONF_CONFIG_ENTRY_ID)
             == self.telegram_entry_id
             and event_data.get(ATTR_CHAT_ID) in self.chat_handlers
-            and event_data.get(ATTR_CHAT_ID) == event_data.get(ATTR_USER_ID)
         )
 
     async def async_handle_callback(self, event: Event) -> None:
@@ -258,7 +271,6 @@ class TelegramBotConversationHandler:
             and event_data.get("bot", {}).get(CONF_CONFIG_ENTRY_ID)
             == self.telegram_entry_id
             and event_data.get(ATTR_CHAT_ID) in self.chat_handlers
-            and event_data.get(ATTR_CHAT_ID) == event_data.get(ATTR_USER_ID)
         )
 
 
