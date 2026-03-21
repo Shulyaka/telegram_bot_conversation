@@ -50,14 +50,14 @@
         }
     },
     "issues": {
-      "all_telegram_entries_configured": {
-        "description": "Please also remove the corresponding config subentry from the Telegram Bot Conversation integration.",
-        "title": "Telegram Bot config subentry has been removed"
-      },
-      "no_telegram_bot_entries": {
-        "description": "Please reconfigure the Telegram Bot integration first, and then reconfigure the Telegram Bot Conversation integration.",
-        "title": "No Telegram Bot config entries found"
-      }
+        "all_telegram_entries_configured": {
+            "description": "Please also remove the corresponding config subentry from the Telegram Bot Conversation integration.",
+            "title": "Telegram Bot config subentry has been removed"
+        },
+        "no_telegram_bot_entries": {
+            "description": "Please reconfigure the Telegram Bot integration first, and then reconfigure the Telegram Bot Conversation integration.",
+            "title": "No Telegram Bot config entries found"
+        }
     },
     "options": {
         "step": {
