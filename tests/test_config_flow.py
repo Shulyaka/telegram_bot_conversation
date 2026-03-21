@@ -6,12 +6,11 @@ import pytest
 
 from custom_components.telegram_bot_conversation.const import (
     CONF_TELEGRAM_ENTRY,
+    CONF_TMPDIR,
     DOMAIN,
 )
 from homeassistant import config_entries, data_entry_flow
 from homeassistant.core import HomeAssistant
-
-from .const import MOCK_OPTIONS_CONFIG
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +52,7 @@ async def test_config_flow(hass: HomeAssistant, mock_telegram_config_entry) -> N
     # Advance to step 3
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input=MOCK_OPTIONS_CONFIG,
+        user_input={CONF_TMPDIR: "/mnt/share/media"},
     )
 
     # Check that the config flow is complete and a new entry is created with
@@ -61,7 +60,7 @@ async def test_config_flow(hass: HomeAssistant, mock_telegram_config_entry) -> N
     assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
     assert result["title"] == "Mock Title"
     assert result["data"] == {CONF_TELEGRAM_ENTRY: mock_telegram_config_entry.entry_id}
-    assert result["options"] == MOCK_OPTIONS_CONFIG
+    assert result["options"] == {CONF_TMPDIR: "/mnt/share/media"}
     assert result["result"]
 
 
@@ -77,7 +76,7 @@ async def test_options_flow(
 
     options = await hass.config_entries.options.async_configure(
         options["flow_id"],
-        user_input=MOCK_OPTIONS_CONFIG,
+        user_input={CONF_TMPDIR: "/mnt/share/media"},
     )
     assert options["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert options["data"] == MOCK_OPTIONS_CONFIG
+    assert options["data"] == {CONF_TMPDIR: "/mnt/share/media"}
