@@ -448,7 +448,7 @@ async def validate_data(
 ) -> MappingProxyType[str, Any]:
     """Validate config data."""
     handler = HANDLERS.get(config_entry.domain)
-    if not issubclass(handler, RecursiveBaseFlow):
+    if handler is None or not issubclass(handler, RecursiveBaseFlow):
         raise NotImplementedError(
             f"Handler for domain {config_entry.domain} is not a RecursiveBaseFlow"
         )
@@ -464,9 +464,9 @@ async def validate_data(
     flow.options = config_entry.options
     try:
         schema = await flow.get_data_schema()
+        return MappingProxyType(schema(config_entry.data.copy()))
     except (AbortRecursiveFlow, vol.MultipleInvalid) as err:
         raise HomeAssistantError(str(err)) from err
-    return MappingProxyType(schema(config_entry.data.copy()))
 
 
 async def validate_options(
@@ -474,7 +474,7 @@ async def validate_options(
 ) -> MappingProxyType[str, Any]:
     """Validate options."""
     handler = HANDLERS.get(config_entry.domain)
-    if not issubclass(handler, RecursiveBaseFlow):
+    if handler is None or not issubclass(handler, RecursiveBaseFlow):
         raise NotImplementedError(
             f"Handler for domain {config_entry.domain} is not a RecursiveBaseFlow"
         )
@@ -490,9 +490,9 @@ async def validate_options(
     flow.options = config_entry.options
     try:
         schema = await flow.get_options_schema()
+        return MappingProxyType(schema(config_entry.options.copy()))
     except (AbortRecursiveFlow, vol.MultipleInvalid) as err:
         raise HomeAssistantError(str(err)) from err
-    return MappingProxyType(schema(config_entry.options.copy()))
 
 
 async def validate_subentry_data(
@@ -500,7 +500,7 @@ async def validate_subentry_data(
 ) -> MappingProxyType[str, Any]:
     """Validate subentry config."""
     handler = HANDLERS.get(config_entry.domain)
-    if not issubclass(handler, RecursiveBaseFlow):
+    if handler is None or not issubclass(handler, RecursiveBaseFlow):
         raise NotImplementedError(
             f"Handler for domain {config_entry.domain} is not a RecursiveBaseFlow"
         )
@@ -520,6 +520,6 @@ async def validate_subentry_data(
     flow.options = subentry.data
     try:
         schema = await flow.get_subentry_schema(subentry.subentry_type)
+        return MappingProxyType(schema(subentry.data.copy()))
     except (AbortRecursiveFlow, vol.MultipleInvalid) as err:
         raise HomeAssistantError(str(err)) from err
-    return MappingProxyType(schema(subentry.data.copy()))

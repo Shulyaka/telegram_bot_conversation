@@ -67,17 +67,13 @@ class TelegramBotConversationHandler:
                 ir.async_create_issue(
                     hass,
                     DOMAIN,
-                    "missing_telegram_entry",
-                    translation_key="missing_telegram_entry",
+                    "all_telegram_entries_configured",
+                    translation_key="all_telegram_entries_configured",
                     severity=ir.IssueSeverity.ERROR,
                 )
             )
             raise ConfigEntryNotReady("Telegram entry not found")
 
-        # Telegram entry is available; clear any previously created issue
-        hass.async_create_task(
-            ir.async_delete_issue(hass, DOMAIN, "missing_telegram_entry")
-        )
         linked_telegram_subentries = {
             data[CONF_TELEGRAM_SUBENTRY] for data in subentries_data.values()
         }
@@ -284,7 +280,7 @@ async def async_setup_entry(
                 DOMAIN,
                 str(e),
                 is_fixable=False,
-                severity=ir.IssueSeverity.WARNING,
+                severity=ir.IssueSeverity.ERROR,
                 translation_key=str(e),
             )
 
