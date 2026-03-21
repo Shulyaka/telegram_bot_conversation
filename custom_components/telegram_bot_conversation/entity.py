@@ -112,10 +112,10 @@ def async_translate_message(
     translation_placeholders: dict[str, str] | None = None,
 ) -> str:
     """Return a translated message."""
-    localize_key = f"component.{DOMAIN}.messages.{translation_key}"
+    localize_key = f"component.{DOMAIN}.common.{translation_key}"
     for language in (hass.config.language, "en"):
         translations = async_get_cached_translations(
-            hass, language, category="messages", integration=DOMAIN
+            hass, language, category="common", integration=DOMAIN
         )
         if localize_key in translations:
             message = translations[localize_key]
