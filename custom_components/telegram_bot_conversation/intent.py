@@ -60,14 +60,15 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
             )
             return response
 
-        config_entry = None
-        for entry in hass.config_entries.async_entries(DOMAIN):
-            if (
-                entry.state == ConfigEntryState.LOADED
+        config_entry = next(
+            (
+                entry
+                for entry in hass.config_entries.async_entries(DOMAIN)
+                if entry.state == ConfigEntryState.LOADED
                 and entry.data[CONF_TELEGRAM_ENTRY] == telegram_entry_id
-            ):
-                config_entry = entry
-                break
+            ),
+            None,
+        )
 
         if not config_entry or not (conversation_handler := config_entry.runtime_data):
             response = intent_obj.create_response()

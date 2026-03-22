@@ -1225,7 +1225,7 @@ class TelegramChatHandler:
             SERVICE_SEND_PHOTO,
             {
                 ATTR_FILE: media.path.as_posix(),
-                ATTR_CAPTION: markdownify(result["revised_prompt"]),
+                ATTR_CAPTION: markdownify(result.get("revised_prompt") or ""),
                 **get_telegram_service_target(self.chat_id, self.notify_entity_id),
                 ATTR_MESSAGE_THREAD_ID: thread_id,
                 CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,

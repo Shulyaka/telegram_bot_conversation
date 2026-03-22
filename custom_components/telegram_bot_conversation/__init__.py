@@ -275,11 +275,19 @@ class TelegramBotConversationHandler:
 
     async def handle_generate_image_intent(self, event: Event, prompt: str) -> str:
         """Handle the generate image intent."""
-        return await self.chat_handlers[
-            event.data[ATTR_CHAT_ID]
-        ].handle_generate_image_intent(event, prompt)
+        chat_id = event.data.get(ATTR_CHAT_ID)
+        if chat_id is None:
+            raise HomeAssistantError(
+                "Missing chat_id in event data for generate image intent"
+            )
 
+        chat_handler = self.chat_handlers.get(chat_id)
+        if chat_handler is None:
+            raise HomeAssistantError(
+                f"Chat ID {chat_id} is not configured for this integration"
+            )
 
+        return await chat_handler.handle_generate_image_intent(event, prompt)
 async def async_setup_entry(
     hass: HomeAssistant, entry: TelegramBotConversationConfigEntry
 ) -> bool:
