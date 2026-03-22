@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import voluptuous as vol
 
-from custom_components.telegram_bot_conversation.const import DOMAIN
 from homeassistant.components.telegram_bot.const import (
     CONF_CONFIG_ENTRY_ID,
     EVENT_TELEGRAM_ATTACHMENT,
@@ -15,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import intent
 
-from .const import CONF_TELEGRAM_ENTRY
+from .const import CONF_TELEGRAM_ENTRY, DOMAIN
 
 INTENT_GENERATE_IMAGE = "TelegramGenerateImage"
 
@@ -78,7 +77,12 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
             )
             return response
 
-        method = getattr(conversation_handler, self.method, None)
+        if not callable(method := getattr(conversation_handler, self.method, None)):
+            response = intent_obj.create_response()
+            response.async_set_error(
+                intent.IntentResponseErrorCode.FAILED_TO_HANDLE,
+                "The Telegram Bot Conversation handler does not support this intent. This could be due to broken installation.",
+            )
 
         response = intent_obj.create_response()
         try:

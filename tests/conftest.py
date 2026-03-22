@@ -228,3 +228,4 @@ async def setup_ha(hass: HomeAssistant) -> None:
         *hass.config.media_dirs.values(),
     }
     assert await async_setup_component(hass, "homeassistant", {})
+    assert await async_setup_component(hass, "intent", {})
