@@ -83,6 +83,7 @@ from homeassistant.helpers.translation import async_get_cached_translations
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_AI_TASK,
     CONF_ATTACHMENTS,
     CONF_CONVERSATION_AGENT,
     CONF_CONVERSATION_TIMEOUT,
@@ -1215,7 +1216,10 @@ class TelegramChatHandler:
         )
 
         result = await async_generate_image(
-            self.hass, task_name=DOMAIN, instructions=prompt
+            self.hass,
+            task_name=DOMAIN,
+            entity_id=self.config[CONF_AI_TASK],
+            instructions=prompt,
         )
 
         media = await async_resolve_media(self.hass, result["media_source_id"], None)

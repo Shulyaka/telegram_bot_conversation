@@ -9,12 +9,11 @@ This is a Home Assistant custom integration that allows you to use the [Telegram
 - Home Assistant 2026.3 or later
 - Telegram Bot integration set up and working
 - Any conversation AI integration is recommended, however the NLP Assist works too.
-- Optionally, configured default AI Task for image generation
 
 ## Features
 
 - Per-chat configuration of HA User mapping, conversation agent, and other customization options
-- Image generation with default AI Task integration
+- Image generation with AI Task integration
 - Extended conversation history timeout
 - Easy switch between agents with `/model` command
 - Start a conversation from scratch with `/new` command
