@@ -171,7 +171,10 @@ async def mock_telegram_config_entry(
 
 @pytest.fixture
 async def mock_config_entry(
-    hass, hass_config_dir: str, mock_telegram_config_entry: MockConfigEntry
+    hass,
+    mock_init_component,
+    hass_config_dir: str,
+    mock_telegram_config_entry: MockConfigEntry,
 ) -> MockConfigEntry:
     """Mock a config entry."""
 
@@ -220,6 +223,13 @@ async def mock_config_entry(
     await hass.async_block_till_done()
 
 
+@pytest.fixture
+async def mock_init_component(hass: HomeAssistant) -> None:
+    """Initialize integration."""
+    assert await async_setup_component(hass, DOMAIN, {})
+    await hass.async_block_till_done()
+
+
 @pytest.fixture(autouse=True)
 async def setup_ha(hass: HomeAssistant) -> None:
     """Set up Home Assistant."""
@@ -228,3 +238,4 @@ async def setup_ha(hass: HomeAssistant) -> None:
         *hass.config.media_dirs.values(),
     }
     assert await async_setup_component(hass, "homeassistant", {})
+    assert await async_setup_component(hass, "intent", {})

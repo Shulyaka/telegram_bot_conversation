@@ -17,6 +17,7 @@ CONF_MERMAID = "mermaid"
 CONF_TMPDIR = "tmpdir"
 CONF_DISABLE_WEB_PREV = "disable_web_page_preview"
 CONF_THOUGHTS = "thoughts"
+CONF_AI_TASK = "ai_task"
 
 
 REACTION_EMOJI = [

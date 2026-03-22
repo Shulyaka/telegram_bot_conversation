@@ -41,6 +41,7 @@
             "step": {
                 "init": {
                     "data": {
+                        "ai_task": "AI Task",
                         "attachments": "Attachments",
                         "conversation_agent": "Conversation agent.",
                         "conversation_timeout": "Conversation timeout",
@@ -52,6 +53,7 @@
                         "user_id": "Home Assistant user"
                     },
                     "data_description": {
+                        "ai_task": "AI Task entity for image generation.",
                         "attachments": "Minimum number of lines in a code block to be sent as files. Set to 0 to disable the functionality.",
                         "conversation_agent": "Conversation agent to use for this chat.",
                         "conversation_timeout": "Overwrite default conversation timeout for context management. The bot will ignore message history if the chat is interrupted for longer than this time.",

@@ -48,7 +48,7 @@ from .const import (
 from .entity import TelegramChatHandler
 from .recursive_data_flow import validate_data, validate_options, validate_subentry_data
 
-type TelegramBotConversationConfigEntry = ConfigEntry[None]
+type TelegramBotConversationConfigEntry = ConfigEntry[TelegramBotConversationHandler]
 
 
 class TelegramBotConversationHandler:
@@ -273,6 +273,24 @@ class TelegramBotConversationHandler:
             and event_data.get(ATTR_CHAT_ID) in self.chat_handlers
         )
 
+    async def handle_generate_image_intent(
+        self, event: Event, context: Context, prompt: str
+    ) -> str:
+        """Handle the generate image intent."""
+        chat_id = event.data.get(ATTR_CHAT_ID)
+        if chat_id is None:
+            raise HomeAssistantError(
+                "Missing chat_id in event data for generate image intent"
+            )
+
+        chat_handler = self.chat_handlers.get(chat_id)
+        if chat_handler is None:
+            raise HomeAssistantError(
+                f"Chat ID {chat_id} is not configured for this integration"
+            )
+
+        return await chat_handler.handle_generate_image_intent(event, context, prompt)
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: TelegramBotConversationConfigEntry
@@ -302,7 +320,7 @@ async def async_setup_entry(
 
         raise ConfigEntryNotReady(f"Configuration error: {e}") from e
 
-    TelegramBotConversationHandler(
+    entry.runtime_data = TelegramBotConversationHandler(
         hass, entry, data=data, options=options, subentries_data=subentries_data
     )
 
