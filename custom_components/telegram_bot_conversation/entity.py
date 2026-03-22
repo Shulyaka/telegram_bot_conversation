@@ -14,6 +14,7 @@ from typing import Any, Self
 from telegramify_markdown import entities_to_markdownv2, markdownify, telegramify
 from telegramify_markdown.content import ContentType
 
+from homeassistant.components.ai_task import async_generate_image
 from homeassistant.components.conversation import (
     AssistantContentDeltaDict,
     Attachment,
@@ -27,6 +28,7 @@ from homeassistant.components.conversation import (
 from homeassistant.components.conversation.agent_manager import get_agent_manager
 from homeassistant.components.conversation.chat_log import DATA_CHAT_LOGS
 from homeassistant.components.conversation.const import DATA_COMPONENT, ChatLogEventType
+from homeassistant.components.media_source import async_resolve_media
 from homeassistant.components.telegram_bot.bot import InputMediaType
 from homeassistant.components.telegram_bot.const import (
     ATTR_CALLBACK_QUERY_ID,
@@ -51,6 +53,7 @@ from homeassistant.components.telegram_bot.const import (
     ATTR_TEXT,
     ATTR_USER_ID,
     CHAT_ACTION_TYPING,
+    CHAT_ACTION_UPLOAD_PHOTO,
     CONF_CONFIG_ENTRY_ID,
     DOMAIN as TELEGRAM_DOMAIN,
     EVENT_TELEGRAM_SENT,
@@ -1188,3 +1191,55 @@ class TelegramChatHandler:
                 },
                 context=context,
             )
+
+    async def handle_generate_image_intent(self, event: Event, prompt: str) -> str:
+        """Handle the generate image intent."""
+        LOGGER.debug("generate_image_intent event data: %s", event.data)
+        context = self._get_context(event.context, event.data.get(ATTR_USER_ID))
+
+        thread_id = event.data.get(ATTR_MESSAGE_THREAD_ID) or 0
+
+        await self.hass.services.async_call(
+            TELEGRAM_DOMAIN,
+            SERVICE_SEND_CHAT_ACTION,
+            {
+                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                **get_telegram_service_target(
+                    self.chat_id,
+                    self.notify_entity_id,
+                ),
+                ATTR_MESSAGE_THREAD_ID: thread_id,
+                ATTR_CHAT_ACTION: CHAT_ACTION_UPLOAD_PHOTO,
+            },
+            context=context,
+        )
+
+        result = await async_generate_image(
+            self.hass, task_name=DOMAIN, instructions=prompt
+        )
+
+        media = await async_resolve_media(self.hass, result["media_source_id"], None)
+
+        await self.hass.services.async_call(
+            TELEGRAM_DOMAIN,
+            SERVICE_SEND_PHOTO,
+            {
+                ATTR_FILE: media.path.as_posix(),
+                ATTR_CAPTION: markdownify(result["revised_prompt"]),
+                **get_telegram_service_target(self.chat_id, self.notify_entity_id),
+                ATTR_MESSAGE_THREAD_ID: thread_id,
+                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                ATTR_PARSER: "markdownv2",
+            },
+            blocking=True,
+            context=context,
+            return_response=True,
+        )
+
+        message = "The image has been generated and sent to the user."
+        if (
+            revised_prompt := result.get("revised_prompt")
+        ) and revised_prompt != prompt:
+            message += f" Revised prompt: {revised_prompt}"
+
+        return message
