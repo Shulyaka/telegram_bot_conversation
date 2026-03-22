@@ -171,7 +171,10 @@ async def mock_telegram_config_entry(
 
 @pytest.fixture
 async def mock_config_entry(
-    hass, hass_config_dir: str, mock_telegram_config_entry: MockConfigEntry
+    hass,
+    mock_init_component,
+    hass_config_dir: str,
+    mock_telegram_config_entry: MockConfigEntry,
 ) -> MockConfigEntry:
     """Mock a config entry."""
 
@@ -217,6 +220,13 @@ async def mock_config_entry(
     yield entry
 
     await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+@pytest.fixture
+async def mock_init_component(hass: HomeAssistant) -> None:
+    """Initialize integration."""
+    assert await async_setup_component(hass, DOMAIN, {})
     await hass.async_block_till_done()
 
 

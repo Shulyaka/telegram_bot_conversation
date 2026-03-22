@@ -10,7 +10,7 @@ from homeassistant.components.telegram_bot.const import (
     EVENT_TELEGRAM_TEXT,
 )
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import intent
 
@@ -28,6 +28,16 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
     """Base class for Telegram Bot Conversation intent handlers."""
 
     platforms = None
+
+    @callback
+    def async_can_handle(self, intent_obj: intent.Intent) -> bool:
+        """Test if an intent can be handled."""
+        return (
+            super().async_can_handle(intent_obj)
+            and (context := intent_obj.context)
+            and (event := context.origin_event)
+            and event.event_type in (EVENT_TELEGRAM_TEXT, EVENT_TELEGRAM_ATTACHMENT)
+        )
 
     async def async_handle(self, intent_obj: intent.Intent) -> intent.IntentResponse:
         """Handle the intent."""
@@ -86,7 +96,7 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
 
         response = intent_obj.create_response()
         try:
-            result = await method(event, **slots)
+            result = await method(event, context, **slots)
             response.async_set_speech(result)
         except HomeAssistantError as e:
             response.async_set_error(
@@ -101,7 +111,11 @@ class GenerateImageHandler(BaseTelegramBotConversationIntentHandler):
 
     intent_type = INTENT_GENERATE_IMAGE
     description = "Generate an image using AI and send it to the user via Telegram."
-    slot_schema = {
-        vol.Required("prompt"): intent.non_empty_string,
-    }
     method = "handle_generate_image_intent"
+
+    @property
+    def slot_schema(self) -> dict | None:
+        """Return a slot schema."""
+        return {
+            vol.Required("prompt"): intent.non_empty_string,
+        }

@@ -1193,10 +1193,12 @@ class TelegramChatHandler:
                 context=context,
             )
 
-    async def handle_generate_image_intent(self, event: Event, prompt: str) -> str:
+    async def handle_generate_image_intent(
+        self, event: Event, context: Context, prompt: str
+    ) -> str:
         """Handle the generate image intent."""
         LOGGER.debug("generate_image_intent event data: %s", event.data)
-        context = self._get_context(event.context, event.data.get(ATTR_USER_ID))
+        context = self._get_context(context, event.data.get(ATTR_USER_ID))
 
         thread_id = event.data.get(ATTR_MESSAGE_THREAD_ID) or 0
 

@@ -273,7 +273,9 @@ class TelegramBotConversationHandler:
             and event_data.get(ATTR_CHAT_ID) in self.chat_handlers
         )
 
-    async def handle_generate_image_intent(self, event: Event, prompt: str) -> str:
+    async def handle_generate_image_intent(
+        self, event: Event, context: Context, prompt: str
+    ) -> str:
         """Handle the generate image intent."""
         chat_id = event.data.get(ATTR_CHAT_ID)
         if chat_id is None:
@@ -287,7 +289,7 @@ class TelegramBotConversationHandler:
                 f"Chat ID {chat_id} is not configured for this integration"
             )
 
-        return await chat_handler.handle_generate_image_intent(event, prompt)
+        return await chat_handler.handle_generate_image_intent(event, context, prompt)
 
 
 async def async_setup_entry(
