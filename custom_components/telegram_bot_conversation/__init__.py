@@ -288,6 +288,8 @@ class TelegramBotConversationHandler:
             )
 
         return await chat_handler.handle_generate_image_intent(event, prompt)
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: TelegramBotConversationConfigEntry
 ) -> bool:
