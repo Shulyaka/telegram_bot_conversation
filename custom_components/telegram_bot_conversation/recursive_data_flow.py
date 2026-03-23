@@ -425,7 +425,7 @@ class RecursiveDataFlow(RecursiveBaseFlow):
             assert self._current_step_data is not None
 
         except AbortRecursiveFlow as err:
-            return cast(RecursiveFlowResult, self.async_abort(reason=str(err)))
+            return cast(RecursiveFlowResult, self.async_abort(reason=err.reason))
 
         schema = self.add_suggested_values_to_schema(
             self._current_step_schema,
@@ -501,7 +501,7 @@ class RecursiveOptionsFlow(RecursiveDataFlow, OptionsFlow):
                 await self._async_recursive_step("init", user_input),
             )
         except AbortRecursiveFlow as err:
-            return self.async_abort(reason=str(err))
+            return self.async_abort(reason=err.reason)
 
     async def _async_finish_recursive_flow(self) -> ConfigFlowResult:
         """Return result entry for option flow."""
@@ -550,7 +550,7 @@ class RecursiveSubentryFlow(RecursiveDataFlow, ConfigSubentryFlow):
                 await self._async_recursive_step("init", user_input),
             )
         except AbortRecursiveFlow as err:
-            return self.async_abort(reason=str(err))
+            return self.async_abort(reason=err.reason)
 
     @property
     def title(self) -> str:
@@ -600,7 +600,7 @@ class RecursiveConfigFlow(RecursiveDataFlow, ConfigFlow):
                 await self._async_recursive_step("user", user_input),
             )
         except AbortRecursiveFlow as err:
-            return self.async_abort(reason=str(err))
+            return self.async_abort(reason=err.reason)
 
     async def _async_finish_recursive_flow(self) -> ConfigFlowResult:
         """Return result entry for config flow."""
@@ -701,7 +701,12 @@ async def validate_data(
     try:
         schema = await flow.get_data_schema()
         return MappingProxyType(schema(config_entry.data.copy()))
-    except (AbortRecursiveFlow, vol.MultipleInvalid) as err:
+    except AbortRecursiveFlow as err:
+        raise HomeAssistantError(
+            translation_key=err.reason,
+            translation_placeholders=err.description_placeholders,
+        ) from err
+    except vol.MultipleInvalid as err:
         raise HomeAssistantError(str(err)) from err
 
 
@@ -727,7 +732,12 @@ async def validate_options(
     try:
         schema = await flow.get_options_schema()
         return MappingProxyType(schema(config_entry.options.copy()))
-    except (AbortRecursiveFlow, vol.MultipleInvalid) as err:
+    except AbortRecursiveFlow as err:
+        raise HomeAssistantError(
+            translation_key=err.reason,
+            translation_placeholders=err.description_placeholders,
+        ) from err
+    except vol.MultipleInvalid as err:
         raise HomeAssistantError(str(err)) from err
 
 
@@ -760,5 +770,10 @@ async def validate_subentry_data(
     try:
         schema = await flow.get_subentry_schema(subentry.subentry_type)
         return MappingProxyType(schema(subentry.data.copy()))
-    except (AbortRecursiveFlow, vol.MultipleInvalid) as err:
+    except AbortRecursiveFlow as err:
+        raise HomeAssistantError(
+            translation_key=err.reason,
+            translation_placeholders=err.description_placeholders,
+        ) from err
+    except vol.MultipleInvalid as err:
         raise HomeAssistantError(str(err)) from err
