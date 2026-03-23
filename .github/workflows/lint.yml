@@ -38,3 +38,43 @@ jobs:
 
       - name: Lint check
         run: scripts/lint-check
+
+  prek:
+    name: "Run prek checks"
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: read # To check out the repository
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Register problem matchers
+        run: |
+          echo "::add-matcher::.github/workflows/matchers/yamllint.json"
+          echo "::add-matcher::.github/workflows/matchers/check-json.json"
+          echo "::add-matcher::.github/workflows/matchers/check-executables-have-shebangs.json"
+          echo "::add-matcher::.github/workflows/matchers/codespell.json"
+          echo "::add-matcher::.github/workflows/matchers/mypy.json"
+
+      - name: Run prek
+        uses: j178/prek-action@0bb87d7f00b0c99306c8bcb8b8beba1eb581c037 # v1.1.1
+        env:
+          PREK_SKIP: no-commit-to-branch,zizmor
+          RUFF_OUTPUT_FORMAT: github
+
+  zizmor:
+    name: "Check GitHub Actions workflows"
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: read
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Run zizmor
+        uses: j178/prek-action@0bb87d7f00b0c99306c8bcb8b8beba1eb581c037 # v1.1.1
+        with:
+          extra-args: --all-files zizmor

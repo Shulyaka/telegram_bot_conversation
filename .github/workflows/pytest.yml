@@ -25,6 +25,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Register problem matchers
+        run: |
+          echo "::add-matcher::.github/workflows/matchers/python.json"
+          echo "::add-matcher::.github/workflows/matchers/pytest-slow.json"
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
