@@ -5,6 +5,7 @@ from collections.abc import Mapping
 import contextlib
 from dataclasses import dataclass, field
 from datetime import timedelta
+import itertools
 from pathlib import Path
 import tempfile
 from types import TracebackType
@@ -457,6 +458,30 @@ class TelegramChatHandler:
                                 and disable_web_prev
                             ):
                                 continue
+                            if (
+                                not disable_notification
+                            ):  # Cannot edit messages with a notification
+                                for message_id, _ in itertools.chain(
+                                    [(message_id, last_text)], sent_drafts_iter
+                                ):  # Delete this draft and all remaining ones to maintain sequence
+                                    await self.hass.services.async_call(
+                                        TELEGRAM_DOMAIN,
+                                        SERVICE_DELETE_MESSAGE,
+                                        {
+                                            ATTR_MESSAGE_ID: message_id,
+                                            **get_telegram_service_target(
+                                                self.chat_id, self.notify_entity_id
+                                            ),
+                                            CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                        },
+                                        blocking=True,
+                                        context=context,
+                                    )
+
+                                    current_conversation.sent_drafts.pop(
+                                        message_id, None
+                                    )
+                                raise StopIteration  # noqa: TRY301
 
                             if draft or item.content_type == ContentType.TEXT:
                                 await self.hass.services.async_call(
