@@ -47,7 +47,7 @@ jobs:
         run: pytest --cov custom_components/telegram_bot_conversation --cov-report=term-missing $(test "$RUNNER_DEBUG" && echo "-vv")
 
       - name: Coveralls
-        uses: AndreMiras/coveralls-python-action@f5fd5c309b39d01599fb92c72d4f7409ea78aec9 # v20201129
+        uses: AndreMiras/coveralls-python-action@ac868b9540fad490f7ca82b8ca00480fd751ed19 # develop, not tagged
         with:
           parallel: true
           flag-name: ${{ matrix.ha-version }}.${{ matrix.python-version }}
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Coverage
-        uses: AndreMiras/coveralls-python-action@f5fd5c309b39d01599fb92c72d4f7409ea78aec9 # v20201129
+        uses: AndreMiras/coveralls-python-action@ac868b9540fad490f7ca82b8ca00480fd751ed19 # develop, not tagged
         with:
           parallel-finished: true
           debug: ${{ runner.debug && 'true' || 'false' }}
