@@ -11,11 +11,10 @@ For more details about this integration, please refer to
 https://github.com/Shulyaka/telegram_bot_conversation
 """
 
-from __future__ import annotations
-
 from asyncio import CancelledError, Task
 from collections.abc import Mapping
 from contextlib import suppress
+from types import MappingProxyType
 from typing import Any
 
 from homeassistant.components.conversation.chat_log import async_subscribe_chat_logs
@@ -58,9 +57,9 @@ class TelegramBotConversationHandler:
         self,
         hass: HomeAssistant,
         entry: TelegramBotConversationConfigEntry,
-        data: dict[str, Any],
-        options: dict[str, Any],
-        subentries_data: dict[str, dict[str, Any]],
+        data: MappingProxyType[str, Any],
+        options: MappingProxyType[str, Any],
+        subentries_data: dict[str, MappingProxyType[str, Any]],
     ) -> None:
         """Initialize the handler."""
         self.hass = hass
@@ -70,14 +69,13 @@ class TelegramBotConversationHandler:
         telegram_entry = hass.config_entries.async_get_entry(self.telegram_entry_id)
         if not telegram_entry:
             # Create an issue so the user gets actionable guidance instead of a reload loop
-            hass.async_create_task(
-                ir.async_create_issue(
-                    hass,
-                    DOMAIN,
-                    "all_telegram_entries_configured",
-                    translation_key="all_telegram_entries_configured",
-                    severity=ir.IssueSeverity.ERROR,
-                )
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                "all_telegram_entries_configured",
+                translation_key="all_telegram_entries_configured",
+                severity=ir.IssueSeverity.ERROR,
+                is_fixable=False,
             )
             raise ConfigEntryNotReady("Telegram entry not found")
 
@@ -86,7 +84,7 @@ class TelegramBotConversationHandler:
         }
 
         telegram_id_map = {
-            subentry_id: subentry.data[CONF_CHAT_ID]
+            subentry_id: int(subentry.data[CONF_CHAT_ID])
             for subentry_id, subentry in telegram_entry.subentries.items()
             if subentry.subentry_type == SUBENTRY_TYPE_ALLOWED_CHAT_IDS
             and subentry.data.get(CONF_CHAT_ID) is not None
@@ -102,8 +100,8 @@ class TelegramBotConversationHandler:
             and entity_entry.domain == NOTIFY_DOMAIN
         }
 
-        user_id_map = {
-            telegram_id_map[data[CONF_TELEGRAM_SUBENTRY]]: data.get(CONF_USER)
+        user_id_map: dict[int, str] = {
+            telegram_id_map[data[CONF_TELEGRAM_SUBENTRY]]: str(data.get(CONF_USER))
             for data in subentries_data.values()
             if data.get(CONF_USER) is not None
             and data.get(CONF_TELEGRAM_SUBENTRY) in telegram_id_map
@@ -195,7 +193,7 @@ class TelegramBotConversationHandler:
             )
             return
 
-        def log_exceptions(task: Task) -> None:
+        def log_exceptions(task: Task[None]) -> None:
             """Log exceptions from async_handle_chat_log_event."""
             with suppress(CancelledError):
                 if err := task.exception():

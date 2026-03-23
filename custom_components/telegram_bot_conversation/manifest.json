@@ -1,20 +1,13 @@
 {
   "domain": "telegram_bot_conversation",
   "name": "Telegram Bot <> Conversation",
-  "codeowners": [
-    "@Shulyaka"
-  ],
+  "codeowners": ["@Shulyaka"],
   "config_flow": true,
-  "dependencies": [
-    "conversation",
-    "telegram_bot"
-  ],
+  "dependencies": ["conversation", "telegram_bot"],
   "documentation": "https://github.com/Shulyaka/telegram_bot_conversation",
   "integration_type": "service",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/Shulyaka/telegram_bot_conversation/issues",
-  "requirements": [
-    "telegramify_markdown[mermaid]==1.1.1"
-  ],
+  "requirements": ["telegramify_markdown[mermaid]==1.1.1"],
   "version": "0.1.6"
 }

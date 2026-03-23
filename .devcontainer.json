@@ -1,70 +1,68 @@
 {
-    "name": "Telegram Bot Conversation",
-    "image": "mcr.microsoft.com/devcontainers/python:3.14",
-    "postCreateCommand": "git config --global --add safe.directory ${containerWorkspaceFolder} && scripts/setup --full",
-    "postStartCommand": "scripts/motd",
-    "containerEnv": {
-        // Enable asyncio debug mode for easier debugging of async code
-        "PYTHONASYNCIODEBUG": "1",
-        // Ensure Python output is sent straight to terminal (e.g. for logging)
-        "PYTHONUNBUFFERED": "1",
-        // Prevent Python from writing .pyc files to disk
-        "PYTHONDONTWRITEBYTECODE": "1"
-    },
-    "forwardPorts": [
-        8123
-    ],
-    "portsAttributes": {
-        "8123": {
-            "label": "Home Assistant",
-            "onAutoForward": "notify"
-        }
-    },
-    "customizations": {
-        "vscode": {
-            "extensions": [
-                "charliermarsh.ruff",
-                "github.vscode-pull-request-github",
-                "ms-python.python",
-                "ms-python.vscode-pylance",
-                "ryanluker.vscode-coverage-gutters"
-            ],
-            "settings": {
-                "files.eol": "\n",
-                "editor.tabSize": 4,
-                "editor.formatOnPaste": true,
-                "editor.formatOnSave": true,
-                "editor.formatOnType": false,
-                "files.trimTrailingWhitespace": true,
-                "python.analysis.typeCheckingMode": "basic",
-                "python.analysis.autoImportCompletions": true,
-                "python.analysis.diagnosticMode": "workspace",
-                "python.analysis.include": [
-                    "custom_components/telegram_bot_conversation"
-                ],
-                "python.analysis.exclude": [
-                    "**/.venv/**",
-                    "**/venv/**",
-                    "**/__pycache__/**",
-                    "**/.git/**",
-                    "**/.github/**",
-                    "**/docs/**",
-                    "**/node_modules/**"
-                ],
-                "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
-                "python.analysis.extraPaths": [
-                    "${workspaceFolder}/.venv/lib/python3.14/site-packages"
-                ],
-                "[python]": {
-                    "editor.defaultFormatter": "charliermarsh.ruff"
-                }
-            }
-        }
-    },
-    "remoteUser": "vscode",
-    "features": {
-        "ghcr.io/devcontainers-extra/features/apt-packages:1": {
-            "packages": "ffmpeg,libturbojpeg0,libpcap-dev"
-        }
+  "name": "Telegram Bot Conversation",
+  "image": "mcr.microsoft.com/devcontainers/python:3.14",
+  "postCreateCommand": "git config --global --add safe.directory ${containerWorkspaceFolder} && scripts/setup --full",
+  "postStartCommand": "scripts/motd",
+  "containerEnv": {
+    // Enable asyncio debug mode for easier debugging of async code
+    "PYTHONASYNCIODEBUG": "1",
+    // Ensure Python output is sent straight to terminal (e.g. for logging)
+    "PYTHONUNBUFFERED": "1",
+    // Prevent Python from writing .pyc files to disk
+    "PYTHONDONTWRITEBYTECODE": "1"
+  },
+  "forwardPorts": [8123],
+  "portsAttributes": {
+    "8123": {
+      "label": "Home Assistant",
+      "onAutoForward": "notify"
     }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "charliermarsh.ruff",
+        "github.vscode-pull-request-github",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ryanluker.vscode-coverage-gutters"
+      ],
+      "settings": {
+        "files.eol": "\n",
+        "editor.tabSize": 4,
+        "editor.formatOnPaste": true,
+        "editor.formatOnSave": true,
+        "editor.formatOnType": false,
+        "files.trimTrailingWhitespace": true,
+        "python.analysis.typeCheckingMode": "basic",
+        "python.analysis.autoImportCompletions": true,
+        "python.analysis.diagnosticMode": "workspace",
+        "python.analysis.include": [
+          "custom_components/telegram_bot_conversation"
+        ],
+        "python.analysis.exclude": [
+          "**/.venv/**",
+          "**/venv/**",
+          "**/__pycache__/**",
+          "**/.git/**",
+          "**/.github/**",
+          "**/docs/**",
+          "**/node_modules/**"
+        ],
+        "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+        "python.analysis.extraPaths": [
+          "${workspaceFolder}/.venv/lib/python3.14/site-packages"
+        ],
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff"
+        }
+      }
+    }
+  },
+  "remoteUser": "vscode",
+  "features": {
+    "ghcr.io/devcontainers-extra/features/apt-packages:1": {
+      "packages": "ffmpeg,libturbojpeg0,libpcap-dev"
+    }
+  }
 }

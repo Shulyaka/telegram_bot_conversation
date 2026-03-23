@@ -39,12 +39,13 @@ else
   echo "Virtual environment detected: $VIRTUAL_ENV"
 fi
 
+tmpdir=$(mktemp -d)
+trap "rm -rf $tmpdir" EXIT
+
 if [ "$1" = "--full" ]; then
   echo "Fetching Home Assistant dependencies for version ${HA_VERSION}..."
 
   HA_CORE_BASE_URL="https://raw.githubusercontent.com/home-assistant/core/${HA_VERSION}"
-  tmpdir=$(mktemp -d)
-  trap "rm -rf $tmpdir" EXIT
   mkdir -p $tmpdir/homeassistant
   curl -fsSL "${HA_CORE_BASE_URL}/homeassistant/package_constraints.txt" -o $tmpdir/homeassistant/package_constraints.txt  # constraints for requirements files
   curl -fsSL "${HA_CORE_BASE_URL}/requirements.txt" -o $tmpdir/requirements.txt  # required by requirements_all.txt
@@ -71,13 +72,29 @@ case "$HA_VERSION" in
         ;;
 esac
 
+if [ "$1" != "--full" ]; then
+  PHACC_VERSION=$( (uv pip install --dry-run $PIPARGS --requirement requirements.txt $HA_INSTALL_ARG || uv pip install $PIPARGS --requirement requirements.txt ) 2>&1 | grep "+ pytest-homeassistant-custom-component" | sed -e 's/.*==//')
+  if [ -z "$PHACC_VERSION" ]; then
+    PHACC_VERSION=$(uv pip show pytest-homeassistant-custom-component | grep ^Version: | awk '{print $2}')
+  fi
+  if [ -z "$PHACC_VERSION" ]; then
+    echo "Error: Could not determine pytest-homeassistant-custom-component version."
+    exit 1
+  fi
+  echo "Fetching pytest-homeassistant-custom-component dependencies for version ${PHACC_VERSION}..."
+  PHACC_BASE_URL="https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/${PHACC_VERSION}"
+  curl -fsSL "${PHACC_BASE_URL}/requirements_dev.txt" -o $tmpdir/requirements_dev.txt
+  PIPARGS="$PIPARGS --requirement $tmpdir/requirements_dev.txt"
+fi
+
 uv pip install $PIPARGS --requirement requirements.txt $HA_INSTALL_ARG || {
   echo "Warning: Failed to install dependencies. This usually means that the requirements in requirements.txt are incompatible with the specified Home Assistant version (${HA_VERSION}). Trying again with installing requirements.txt and Home Assistant separately. This may lead to incompatible dependencies, but should work in most cases."
   uv pip install $PIPARGS --requirement requirements.txt
   uv pip install $PIPARGS $HA_INSTALL_ARG
 }
 
-echo "==> Installing pre-commit hooks..."
-pre-commit install
+echo "==> Installing prek hooks..."
+pre-commit uninstall
+prek install
 
 echo "==> Bootstrap completed!"
