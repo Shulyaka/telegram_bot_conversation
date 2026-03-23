@@ -73,7 +73,7 @@ case "$HA_VERSION" in
 esac
 
 if [ "$1" != "--full" ]; then
-  PHACC_VERSION=$((uv pip install --dry-run $PIPARGS --requirement requirements.txt $HA_INSTALL_ARG || uv pip install $PIPARGS --requirement requirements.txt ) 2>&1 | grep "+ pytest-homeassistant-custom-component" | sed -e 's/.*==//')
+  PHACC_VERSION=$( (uv pip install --dry-run $PIPARGS --requirement requirements.txt $HA_INSTALL_ARG || uv pip install $PIPARGS --requirement requirements.txt ) 2>&1 | grep "+ pytest-homeassistant-custom-component" | sed -e 's/.*==//')
   if [ -z "$PHACC_VERSION" ]; then
     PHACC_VERSION=$(uv pip show pytest-homeassistant-custom-component | grep ^Version: | awk '{print $2}')
   fi
