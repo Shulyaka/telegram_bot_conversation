@@ -26,9 +26,9 @@
   "config_subentries": {
     "telegram_id": {
       "abort": {
+        "all_telegram_entries_configured": "All Telegram Bot entries are already configured. Please reconfigure an existing entry or add a new subentry to the telegram bot integration.",
         "entry_not_loaded": "Cannot add things while the configuration is disabled.",
-        "reconfigure_successful": "Reconfigured successfully",
-        "all_telegram_entries_configured": "All Telegram Bot entries are already configured. Please reconfigure an existing entry or add a new subentry to the telegram bot integration."
+        "reconfigure_successful": "Reconfigured successfully"
       },
       "entry_type": "Telegram Chat",
       "error": {
