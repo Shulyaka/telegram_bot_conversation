@@ -1,5 +1,8 @@
 # Telegram Bot Conversation
 
+[![Tests](https://github.com/Shulyaka/telegram_bot_conversation/actions/workflows/pytest.yml/badge.svg)](https://github.com/Shulyaka/telegram_bot_conversation/actions/workflows/pytest.yml)
+[![Coverage](https://coveralls.io/repos/github/Shulyaka/telegram_bot_conversation/badge.svg?branch=main)](https://coveralls.io/github/Shulyaka/telegram_bot_conversation?branch=main)
+
 This is a Home Assistant custom integration that allows you to use the [Telegram bot](https://www.home-assistant.io/integrations/telegram_bot/) integration with [Conversation](https://www.home-assistant.io/integrations/conversation/) agents such as [OpenAI](https://www.home-assistant.io/integrations/openai_conversation/), [Anthropic Claude](https://www.home-assistant.io/integrations/anthropic/), or [Google Gemini](https://www.home-assistant.io/integrations/google_generative_ai_conversation/).
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?category=integration&owner=Shulyaka&repository=telegram_bot_conversation)
@@ -22,5 +25,5 @@ This is a Home Assistant custom integration that allows you to use the [Telegram
 - You can see the summary of the agent's thoughts and even interrupt the response early
 - Code blocks can be sent as files, mermaid diagrams can be rendered into images, and LaTeX symbols can be translated into Unicode
 - Attachments are supported if your agent supports them (usually only images and pdf, and only for the last message)
-- Group chats are supported (requires separate config subentry for both `telegram_bot` and `telegram_bot_conversation`).
+- Group chats are supported (requires a separate config subentry for both `telegram_bot` and `telegram_bot_conversation`).
 - Partial support for threaded bots (awaiting `telegram_bot` for full support)

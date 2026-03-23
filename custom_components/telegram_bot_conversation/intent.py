@@ -1,6 +1,6 @@
 """Intents for the Telegram Bot Conversation integration."""
 
-from __future__ import annotations
+from typing import Any
 
 import voluptuous as vol
 
@@ -28,11 +28,12 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
     """Base class for Telegram Bot Conversation intent handlers."""
 
     platforms = None
+    method: str
 
     @callback
     def async_can_handle(self, intent_obj: intent.Intent) -> bool:
         """Test if an intent can be handled."""
-        return (
+        return bool(
             super().async_can_handle(intent_obj)
             and (context := intent_obj.context)
             and (event := context.origin_event)
@@ -96,7 +97,7 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
 
         response = intent_obj.create_response()
         try:
-            result = await method(event, context, **slots)
+            result = await method(event, context, **slots)  # type: ignore[misc]
             response.async_set_speech(result)
         except HomeAssistantError as e:
             response.async_set_error(
@@ -114,7 +115,7 @@ class GenerateImageHandler(BaseTelegramBotConversationIntentHandler):
     method = "handle_generate_image_intent"
 
     @property
-    def slot_schema(self) -> dict | None:
+    def slot_schema(self) -> dict[vol.Marker, Any] | None:
         """Return a slot schema."""
         return {
             vol.Required("prompt"): intent.non_empty_string,

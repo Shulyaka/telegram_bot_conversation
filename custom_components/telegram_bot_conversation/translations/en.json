@@ -1,96 +1,96 @@
 {
-    "common": {
-        "conversation_agent_updated": "Conversation agent switched to: `{agent_id}`",
-        "conversation_error": "Error: {error}",
-        "current_conversation_agent": "Current conversation agent: `{agent_id}`",
-        "new_conversation": "New conversation started.",
-        "thinking": "_Thinking..._"
+  "common": {
+    "conversation_agent_updated": "Conversation agent switched to: `{agent_id}`",
+    "conversation_error": "Error: {error}",
+    "current_conversation_agent": "Current conversation agent: `{agent_id}`",
+    "new_conversation": "New conversation started.",
+    "thinking": "_Thinking..._"
+  },
+  "config": {
+    "abort": {
+      "already_configured": "All Telegram chats are already configured",
+      "no_telegram_bot_entries": "No Telegram Bot entries found. Please set up a Telegram Bot configuration before configuring this integration."
     },
-    "config": {
-        "abort": {
-            "already_configured": "All Telegram chats are already configured",
-            "no_telegram_bot_entries": "No Telegram Bot entries found. Please set up a Telegram Bot configuration before configuring this integration."
+    "step": {
+      "user": {
+        "data": {
+          "telegram_entry": "Telegram Bot config entry"
         },
-        "step": {
-            "user": {
-                "data": {
-                    "telegram_entry": "Telegram Bot config entry"
-                },
-                "data_description": {
-                    "telegram_entry": "Select the Telegram Bot configuration to link with this integration."
-                },
-                "description": "Connect to Telegram Bot integration."
-            }
-        }
-    },
-    "config_subentries": {
-        "telegram_id": {
-            "abort": {
-                "entry_not_loaded": "Cannot add things while the configuration is disabled.",
-                "reconfigure_successful": "Reconfigured successfully",
-                "all_telegram_entries_configured": "All Telegram Bot entries are already configured. Please reconfigure an existing entry or add a new subentry to the telegram bot integration."
-            },
-            "entry_type": "Telegram Chat",
-            "error": {
-                "telegram_subentry_already_configured": "This chat is already configured for another subentry. Please select a different Telegram Bot or reconfigure the existing subentry."
-            },
-            "initiate_flow": {
-                "reconfigure": "Reconfigure this telegram chat",
-                "user": "Add telegram chat"
-            },
-            "step": {
-                "init": {
-                    "data": {
-                        "ai_task": "AI Task",
-                        "attachments": "Attachments",
-                        "conversation_agent": "Conversation agent.",
-                        "conversation_timeout": "Conversation timeout",
-                        "disable_web_page_preview": "Disable web page preview",
-                        "latex": "LaTeX",
-                        "mermaid": "Mermaid",
-                        "telegram_subentry": "Telegram chat",
-                        "thoughts": "Thoughts",
-                        "user_id": "Home Assistant user"
-                    },
-                    "data_description": {
-                        "ai_task": "AI Task entity for image generation.",
-                        "attachments": "Minimum number of lines in a code block to be sent as files. Set to 0 to disable the functionality.",
-                        "conversation_agent": "Conversation agent to use for this chat.",
-                        "conversation_timeout": "Overwrite default conversation timeout for context management. The bot will ignore message history if the chat is interrupted for longer than this time.",
-                        "disable_web_page_preview": "Disable link previews for links in the message",
-                        "latex": "Convert LaTeX to Unicode.",
-                        "mermaid": "Render Mermaid diagrams in messages as images.",
-                        "telegram_subentry": "Telegram subentry to link with this integration.",
-                        "thoughts": "Include the agent's thoughts as temporary messages before the actual response becomes available.",
-                        "user_id": "Select a Home Assistant user to link with this Telegram chat."
-                    },
-                    "description": "Create a subentry for each Telegram chat you want to connect.",
-                    "title": "Telegram Chat Configuration"
-                }
-            }
-        }
-    },
-    "issues": {
-        "all_telegram_entries_configured": {
-            "description": "Please also remove the corresponding config subentry from the Telegram Bot Conversation integration.",
-            "title": "Telegram Bot config subentry has been removed"
+        "data_description": {
+          "telegram_entry": "Select the Telegram Bot configuration to link with this integration."
         },
-        "no_telegram_bot_entries": {
-            "description": "Please reconfigure the Telegram Bot integration first, and then reconfigure the Telegram Bot Conversation integration.",
-            "title": "No Telegram Bot config entries found"
-        }
-    },
-    "options": {
-        "step": {
-            "init": {
-                "data": {
-                    "tmpdir": "Temporary directory"
-                },
-                "data_description": {
-                    "tmpdir": "Directory to store temporary files while they are being uploaded to Telegram. You can add a new directory in configuration.yaml as allowlist_external_dirs"
-                },
-                "description": "Configure options for Telegram Bot conversation."
-            }
-        }
+        "description": "Connect to Telegram Bot integration."
+      }
     }
+  },
+  "config_subentries": {
+    "telegram_id": {
+      "abort": {
+        "entry_not_loaded": "Cannot add things while the configuration is disabled.",
+        "reconfigure_successful": "Reconfigured successfully",
+        "all_telegram_entries_configured": "All Telegram Bot entries are already configured. Please reconfigure an existing entry or add a new subentry to the telegram bot integration."
+      },
+      "entry_type": "Telegram Chat",
+      "error": {
+        "telegram_subentry_already_configured": "This chat is already configured for another subentry. Please select a different Telegram Bot or reconfigure the existing subentry."
+      },
+      "initiate_flow": {
+        "reconfigure": "Reconfigure this telegram chat",
+        "user": "Add telegram chat"
+      },
+      "step": {
+        "init": {
+          "data": {
+            "ai_task": "AI Task",
+            "attachments": "Attachments",
+            "conversation_agent": "Conversation agent.",
+            "conversation_timeout": "Conversation timeout",
+            "disable_web_page_preview": "Disable web page preview",
+            "latex": "LaTeX",
+            "mermaid": "Mermaid",
+            "telegram_subentry": "Telegram chat",
+            "thoughts": "Thoughts",
+            "user_id": "Home Assistant user"
+          },
+          "data_description": {
+            "ai_task": "AI Task entity for image generation.",
+            "attachments": "Minimum number of lines in a code block to be sent as files. Set to 0 to disable the functionality.",
+            "conversation_agent": "Conversation agent to use for this chat.",
+            "conversation_timeout": "Overwrite default conversation timeout for context management. The bot will ignore message history if the chat is interrupted for longer than this time.",
+            "disable_web_page_preview": "Disable link previews for links in the message",
+            "latex": "Convert LaTeX to Unicode.",
+            "mermaid": "Render Mermaid diagrams in messages as images.",
+            "telegram_subentry": "Telegram subentry to link with this integration.",
+            "thoughts": "Include the agent's thoughts as temporary messages before the actual response becomes available.",
+            "user_id": "Select a Home Assistant user to link with this Telegram chat."
+          },
+          "description": "Create a subentry for each Telegram chat you want to connect.",
+          "title": "Telegram Chat Configuration"
+        }
+      }
+    }
+  },
+  "issues": {
+    "all_telegram_entries_configured": {
+      "description": "Please also remove the corresponding config subentry from the Telegram Bot Conversation integration.",
+      "title": "Telegram Bot config subentry has been removed"
+    },
+    "no_telegram_bot_entries": {
+      "description": "Please reconfigure the Telegram Bot integration first, and then reconfigure the Telegram Bot Conversation integration.",
+      "title": "No Telegram Bot config entries found"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "tmpdir": "Temporary directory"
+        },
+        "data_description": {
+          "tmpdir": "Directory to store temporary files while they are being uploaded to Telegram. You can add a new directory in configuration.yaml as allowlist_external_dirs"
+        },
+        "description": "Configure options for Telegram Bot conversation."
+      }
+    }
+  }
 }

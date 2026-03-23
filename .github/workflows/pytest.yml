@@ -1,49 +1,60 @@
 name: CI
 
+# yamllint disable-line rule:truthy
 on:
   - push
   - pull_request
 
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  pytest:
+    name: pytest
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ha-version: ['hacs', 'latest', 'dev']
-        python-version: ['3.14']
+        ha-version: ["hacs", "latest", "dev"]
+        python-version: ["3.14"]
 
     steps:
-    - uses: actions/checkout@main
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@main
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@main
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
 
-    - name: Install requirements
-      run: scripts/bootstrap
-      env:
-        HA_VERSION: ${{ matrix.ha-version }}
+      - name: Install requirements
+        run: scripts/bootstrap
+        env:
+          HA_VERSION: ${{ matrix.ha-version }}
 
-    - name: Pytest
-      run: pytest --cov custom_components/telegram_bot_conversation --cov-report=term-missing $(test "$RUNNER_DEBUG" && echo "-vv")
+      - name: Pytest
+        run: pytest --cov custom_components/telegram_bot_conversation --cov-report=term-missing $(test "$RUNNER_DEBUG" && echo "-vv")
 
-    - name: Coveralls
-      uses: AndreMiras/coveralls-python-action@develop
-      with:
-        parallel: true
-        flag-name: ${{ matrix.ha-version }}.${{ matrix.python-version }}
-        debug: ${{ runner.debug && 'true' || 'false' }}
+      - name: Coveralls
+        uses: AndreMiras/coveralls-python-action@f5fd5c309b39d01599fb92c72d4f7409ea78aec9 # v20201129
+        with:
+          parallel: true
+          flag-name: ${{ matrix.ha-version }}.${{ matrix.python-version }}
+          debug: ${{ runner.debug && 'true' || 'false' }}
 
   coverage:
-    needs: build
+    name: Coverage
+    needs: pytest
     runs-on: ubuntu-latest
     steps:
-    - name: Coverage
-      uses: AndreMiras/coveralls-python-action@develop
-      with:
-        parallel-finished: true
-        debug: ${{ runner.debug && 'true' || 'false' }}
+      - name: Coverage
+        uses: AndreMiras/coveralls-python-action@f5fd5c309b39d01599fb92c72d4f7409ea78aec9 # v20201129
+        with:
+          parallel-finished: true
+          debug: ${{ runner.debug && 'true' || 'false' }}

@@ -1,7 +1,5 @@
 """Config flow for Telegram Bot Conversation custom integration."""
 
-from __future__ import annotations
-
 from collections.abc import Iterable
 from typing import Any
 
@@ -12,7 +10,7 @@ from homeassistant.components.telegram_bot.const import (
     DOMAIN as TELEGRAM_DOMAIN,
     SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
 )
-from homeassistant.config_entries import ConfigSubentryData, ConfigSubentryFlow
+from homeassistant.config_entries import ConfigSubentry, ConfigSubentryData
 from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv, selector
 
@@ -47,14 +45,25 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
         """Validate step data."""
         if step_id == "user":
             self._async_abort_entries_match(user_input)
-        elif step_id == "init" and isinstance(self, ConfigSubentryFlow):
-            for subentry in self._get_entry().subentries.values():
+        elif step_id == "init" and CONF_TELEGRAM_SUBENTRY in user_input:
+            try:
+                entry = self._get_entry()
+            except ValueError:
+                return {}
+
+            current_subentry: ConfigSubentry | None = None
+            if self.source != "user":
+                try:
+                    current_subentry = self._get_reconfigure_subentry()
+                except TypeError, ValueError:
+                    return {}
+
+            for subentry in entry.subentries.values():
                 if subentry.data.get(CONF_TELEGRAM_SUBENTRY) == user_input[
                     CONF_TELEGRAM_SUBENTRY
                 ] and (
-                    self.source == "user"
-                    or subentry.subentry_id
-                    != self._get_reconfigure_subentry().subentry_id
+                    current_subentry is None
+                    or subentry.subentry_id != current_subentry.subentry_id
                 ):
                     return {
                         CONF_TELEGRAM_SUBENTRY: "telegram_subentry_already_configured"
@@ -96,7 +105,8 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
     @property
     def title(self) -> str:
         """Return config flow title."""
-        if (telegram_entry_id := self.data.get(CONF_TELEGRAM_ENTRY)) and (
+        data = self.data or {}
+        if (telegram_entry_id := data.get(CONF_TELEGRAM_ENTRY)) and (
             telegram_entry := self.hass.config_entries.async_get_entry(
                 telegram_entry_id
             )
@@ -108,14 +118,16 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
     @property
     def subentry_title(self) -> str:
         """Return config subentry flow title."""
+        data = self.data or {}
+        options = self.options or {}
         if (
-            (telegram_entry_id := self.data.get(CONF_TELEGRAM_ENTRY))
+            (telegram_entry_id := data.get(CONF_TELEGRAM_ENTRY))
             and (
                 telegram_entry := self.hass.config_entries.async_get_entry(
                     telegram_entry_id
                 )
             )
-            and (telegram_subentry_id := self.options.get(CONF_TELEGRAM_SUBENTRY))
+            and (telegram_subentry_id := options.get(CONF_TELEGRAM_SUBENTRY))
             and (
                 telegram_subentry := telegram_entry.subentries.get(telegram_subentry_id)
             )
@@ -134,6 +146,7 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
 
     async def get_subentry_schema(self, subentry_type: str) -> vol.Schema:
         """Get subentry schema."""
+        data = self.data or {}
         known_telegram_subentries = {
             subentry.data.get(CONF_TELEGRAM_SUBENTRY)
             for subentry in self._get_entry().subentries.values()
@@ -143,7 +156,8 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                 or subentry.subentry_id != self._get_reconfigure_subentry().subentry_id
             )
         }
-        if (telegram_entry_id := self.data.get(CONF_TELEGRAM_ENTRY)) and (
+        telegram_entry = None
+        if (telegram_entry_id := data.get(CONF_TELEGRAM_ENTRY)) and (
             telegram_entry := self.hass.config_entries.async_get_entry(
                 telegram_entry_id
             )
@@ -165,12 +179,13 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
         user_options = [
             selector.SelectOptionDict(value=user.id, label=user.name)
             for user in await self.hass.auth.async_get_users()
-            if not user.system_generated
+            if not user.system_generated and user.name is not None
         ]
 
         telegram_subentry_label = None
         if (
             self.source != "user"
+            and telegram_entry is not None
             and (
                 current_telegram_subentry_id
                 := self._get_reconfigure_subentry().data.get(CONF_TELEGRAM_SUBENTRY)
@@ -185,16 +200,18 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
         if telegram_subentry_label is None:
             telegram_subentry_label = telegram_subentry_options[0]["label"]
 
-        default_user = vol.UNDEFINED
+        default_user: str | None = None
         for user in user_options:
             if user["label"] == telegram_subentry_label:
                 default_user = user["value"]
                 break
-        if default_user is vol.UNDEFINED:
+        if default_user is None:
             for user in user_options:
                 if telegram_subentry_label.startswith(user["label"]):
                     default_user = user["value"]
                     break
+
+        default_user_value = default_user if default_user is not None else vol.UNDEFINED
 
         return vol.Schema(
             {
@@ -208,7 +225,7 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(
                     CONF_USER,
-                    default=default_user,
+                    default=default_user_value,
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=user_options,
@@ -243,7 +260,8 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
 
     async def get_default_subentries(self) -> Iterable[ConfigSubentryData] | None:
         """Get default subentries."""
-        if (telegram_entry_id := self.data.get(CONF_TELEGRAM_ENTRY)) and (
+        data = self.data or {}
+        if (telegram_entry_id := data.get(CONF_TELEGRAM_ENTRY)) and (
             telegram_entry := self.hass.config_entries.async_get_entry(
                 telegram_entry_id
             )

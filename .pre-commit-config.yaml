@@ -9,15 +9,117 @@ repos:
       # Run the Ruff linter with auto-fix
       - id: ruff
         name: ruff
-        entry: ruff check --fix --exit-non-zero-on-fix
-        language: system
+        entry: scripts/run-in-env.sh ruff check --fix --exit-non-zero-on-fix
+        language: script
         types: [python]
         require_serial: true
 
       # Run the Ruff formatter
       - id: ruff-format
         name: ruff format
-        entry: ruff format
-        language: system
+        entry: scripts/run-in-env.sh ruff format
+        language: script
         types: [python]
         require_serial: true
+
+      # Run codespell
+      - id: codespell
+        name: codespell
+        entry: scripts/run-in-env.sh codespell
+        language: script
+        args:
+          - --ignore-words-list=aiport,astroid,checkin,currenty,hass,iif,incomfort,lookin,nam,NotIn
+          - --skip="./.*,*.csv,*.json,*.ambr"
+          - --quiet-level=2
+        exclude_types: [csv, json, html]
+        exclude: ^tests/fixtures/|tests/snapshots/
+
+      # Run zizmor
+      - id: zizmor
+        name: zizmor
+        description: "Find security issues in GitHub Actions CI/CD setups"
+        language: script
+        types: [yaml]
+        files: (\.github/(workflows/.*|dependabot.ya?ml))|(action\.ya?ml)$
+        entry: scripts/run-in-env.sh zizmor
+        args:
+          - --no-progress
+          - --pedantic
+          - --fix
+        require_serial: true
+
+      # Run check-executables-have-shebangs from pre-commit-hooks
+      - id: check-executables-have-shebangs
+        name: check that executables have shebangs
+        description: ensures that (non-binary) executables have a shebang.
+        entry: scripts/run-in-env.sh check-executables-have-shebangs
+        language: script
+        types: [text, executable]
+        stages: [pre-commit, pre-push, manual]
+
+      # Run check-json from pre-commit-hooks
+      - id: check-json
+        name: check json
+        description: checks json files for parseable syntax.
+        entry: scripts/run-in-env.sh check-json
+        language: script
+        types: [json]
+        exclude: (.vscode|.devcontainer)
+
+      # Run no-commit-to-branch from pre-commit-hooks
+      - id: no-commit-to-branch
+        name: "don't commit to branch"
+        entry: scripts/run-in-env.sh no-commit-to-branch
+        language: script
+        pass_filenames: false
+        always_run: true
+        args:
+          - --branch=main
+
+      # Run yamllint
+      - id: yamllint
+        name: yamllint
+        description: This hook runs yamllint.
+        entry: scripts/run-in-env.sh yamllint
+        language: script
+        types: [file, yaml]
+
+      # Run prettier
+      - id: prettier
+        name: prettier
+        description: prettier
+        entry: prettier --write --ignore-unknown
+        language: node
+        "types": [text]
+        args: []
+        require_serial: false
+        additional_dependencies:
+          - prettier@3.8.1
+          - prettier-plugin-sort-json@4.2.0
+
+      # Run `python-typing-update` hook manually from time to time
+      # to update python typing syntax.
+      # Will require manual work, before submitting changes!
+      # prek run --hook-stage manual python-typing-update --all-files
+      - id: python-typing-update
+        name: Update Python typing
+        description: Update Python typing syntax
+        stages: [manual]
+        entry: scripts/run-in-env.sh python-typing-update
+        require_serial: true
+        language: script
+        types: [python]
+        args:
+          - --py314-plus
+          - --force
+          - --keep-updates
+        files: ^(custom_components|tests|scripts)/.+\.py$
+
+      # Run mypy
+      - id: mypy
+        name: mypy
+        entry: scripts/run-in-env.sh mypy
+        language: script
+        require_serial: true
+        types_or: [python, pyi]
+        files: ^(custom_components|pylint)/.+\.(py|pyi)$

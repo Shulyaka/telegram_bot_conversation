@@ -5,8 +5,16 @@ from unittest.mock import patch
 import pytest
 
 from custom_components.telegram_bot_conversation.const import (
+    CONF_ATTACHMENTS,
+    CONF_CONVERSATION_TIMEOUT,
+    CONF_DISABLE_WEB_PREV,
+    CONF_LATEX,
+    CONF_MERMAID,
     CONF_TELEGRAM_ENTRY,
+    CONF_TELEGRAM_SUBENTRY,
+    CONF_THOUGHTS,
     CONF_TMPDIR,
+    CONF_USER,
     DOMAIN,
 )
 from homeassistant import config_entries, data_entry_flow
@@ -80,3 +88,49 @@ async def test_options_flow(
     )
     assert options["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
     assert options["data"] == {CONF_TMPDIR: "/mnt/share/media"}
+
+
+async def test_subentry_reconfigure_flow(
+    hass: HomeAssistant,
+    mock_config_entry,
+) -> None:
+    """Test reconfiguring an existing telegram subentry."""
+    subentry_id, subentry = next(iter(mock_config_entry.subentries.items()))
+
+    result = await mock_config_entry.start_subentry_reconfigure_flow(hass, subentry_id)
+
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert not result["errors"]
+    assert result["step_id"] == "init"
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_TELEGRAM_SUBENTRY: subentry.data[CONF_TELEGRAM_SUBENTRY],
+            CONF_USER: subentry.data[CONF_USER],
+            CONF_CONVERSATION_TIMEOUT: {"minutes": 30},
+            CONF_ATTACHMENTS: 25,
+            CONF_LATEX: True,
+            CONF_MERMAID: True,
+            CONF_DISABLE_WEB_PREV: False,
+            CONF_THOUGHTS: True,
+        },
+    )
+
+    assert result["type"] == data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+
+    updated_subentry = hass.config_entries.async_get_known_entry(
+        mock_config_entry.entry_id
+    ).subentries[subentry_id]
+    assert (
+        updated_subentry.data[CONF_TELEGRAM_SUBENTRY]
+        == subentry.data[CONF_TELEGRAM_SUBENTRY]
+    )
+    assert updated_subentry.data[CONF_USER] == subentry.data[CONF_USER]
+    assert updated_subentry.data[CONF_CONVERSATION_TIMEOUT] == {"minutes": 30}
+    assert updated_subentry.data[CONF_ATTACHMENTS] == 25
+    assert updated_subentry.data[CONF_LATEX] is True
+    assert updated_subentry.data[CONF_MERMAID] is True
+    assert updated_subentry.data[CONF_DISABLE_WEB_PREV] is False
+    assert updated_subentry.data[CONF_THOUGHTS] is True
