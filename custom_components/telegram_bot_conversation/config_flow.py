@@ -55,7 +55,7 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
             if self.source != "user":
                 try:
                     current_subentry = self._get_reconfigure_subentry()
-                except TypeError, ValueError:
+                except (TypeError, ValueError) as e:  # noqa: F841
                     return {}
 
             for subentry in entry.subentries.values():
