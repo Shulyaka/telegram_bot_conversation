@@ -704,7 +704,9 @@ async def validate_data(
     except AbortRecursiveFlow as err:
         raise HomeAssistantError(
             translation_key=err.reason,
-            translation_placeholders=err.description_placeholders,
+            translation_placeholders=dict(err.description_placeholders)
+            if err.description_placeholders
+            else None,
         ) from err
     except vol.MultipleInvalid as err:
         raise HomeAssistantError(str(err)) from err
@@ -735,7 +737,9 @@ async def validate_options(
     except AbortRecursiveFlow as err:
         raise HomeAssistantError(
             translation_key=err.reason,
-            translation_placeholders=err.description_placeholders,
+            translation_placeholders=dict(err.description_placeholders)
+            if err.description_placeholders
+            else None,
         ) from err
     except vol.MultipleInvalid as err:
         raise HomeAssistantError(str(err)) from err
@@ -773,7 +777,9 @@ async def validate_subentry_data(
     except AbortRecursiveFlow as err:
         raise HomeAssistantError(
             translation_key=err.reason,
-            translation_placeholders=err.description_placeholders,
+            translation_placeholders=dict(err.description_placeholders)
+            if err.description_placeholders
+            else None,
         ) from err
     except vol.MultipleInvalid as err:
         raise HomeAssistantError(str(err)) from err
