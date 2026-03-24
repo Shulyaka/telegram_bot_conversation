@@ -1,17 +1,19 @@
 """Tests helpers."""
 
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from telegram import AcceptedGiftTypes, Bot, Chat, ChatFullInfo, Message, User
+from telegram import AcceptedGiftTypes, Bot, Chat, ChatFullInfo, Message, Update, User
 from telegram.constants import ChatType
+from telegram.ext import Application
 
 from custom_components.telegram_bot_conversation.const import (
     CONF_ATTACHMENTS,
+    CONF_CONVERSATION_AGENT,
     CONF_CONVERSATION_TIMEOUT,
     CONF_DISABLE_WEB_PREV,
     CONF_LATEX,
@@ -23,6 +25,9 @@ from custom_components.telegram_bot_conversation.const import (
     CONF_USER,
     DOMAIN,
 )
+from homeassistant.components import conversation
+from homeassistant.components.conversation.agent_manager import get_agent_manager
+from homeassistant.components.conversation.models import AbstractConversationAgent
 from homeassistant.components.telegram_bot.const import (
     ATTR_PARSER,
     CONF_ALLOWED_CHAT_IDS,
@@ -34,8 +39,9 @@ from homeassistant.components.telegram_bot.const import (
     PLATFORM_POLLING,
 )
 from homeassistant.config_entries import ConfigSubentryData
-from homeassistant.const import CONF_API_KEY, CONF_PLATFORM
+from homeassistant.const import CONF_API_KEY, CONF_PLATFORM, MATCH_ALL
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.chat_session import async_get_chat_session
 from homeassistant.setup import async_setup_component
 
 
@@ -60,8 +66,19 @@ def skip_notifications_fixture():
         yield
 
 
+@pytest.fixture(autouse=True)
+async def setup_ha(hass: HomeAssistant) -> None:
+    """Set up Home Assistant."""
+    hass.config.allowlist_external_dirs = {
+        hass.config.path("www"),
+        *hass.config.media_dirs.values(),
+    }
+    assert await async_setup_component(hass, "homeassistant", {})
+    assert await async_setup_component(hass, "intent", {})
+
+
 @pytest.fixture
-def mock_telegram_calls() -> Generator[None]:
+def mock_telegram_application() -> Generator[Application]:
     """Fixture for setting up the polling platform using appropriate config and mocks."""
     with patch(
         "homeassistant.components.telegram_bot.polling.ApplicationBuilder"
@@ -76,14 +93,16 @@ def mock_telegram_calls() -> Generator[None]:
         application.stop = AsyncMock()
         application.shutdown = AsyncMock()
 
-        yield
+        application.bot.defaults.tzinfo = None
+
+        yield application
 
 
 @pytest.fixture
 def mock_telegram_external_calls() -> Generator[None]:
     """Mock calls that make calls to the live Telegram API."""
     test_chat = ChatFullInfo(
-        id=123456,
+        id=12345678,
         title="mock title",
         first_name="mock first_name",
         type="PRIVATE",
@@ -91,11 +110,11 @@ def mock_telegram_external_calls() -> Generator[None]:
         accent_color_id=0,
         accepted_gift_types=AcceptedGiftTypes(True, True, True, True),
     )
-    test_user = User(123456, "Testbot", True, "mock last name", "mock username")
+    test_user = User(12345678, "Testbot", True, "mock last name", "mock username")
     message = Message(
         message_id=12345,
         date=datetime.now(UTC),
-        chat=Chat(id=123456, type=ChatType.PRIVATE),
+        chat=Chat(id=12345678, type=ChatType.PRIVATE),
     )
 
     class BotMock(Bot):
@@ -130,8 +149,8 @@ def mock_telegram_external_calls() -> Generator[None]:
 
 @pytest.fixture
 async def mock_telegram_config_entry(
-    hass, mock_telegram_calls, mock_telegram_external_calls
-) -> MockConfigEntry:
+    hass, mock_telegram_application, mock_telegram_external_calls
+) -> AsyncGenerator[MockConfigEntry]:
     """Return the default mocked config entry."""
     entry = MockConfigEntry(
         unique_id="mock api key",
@@ -170,12 +189,130 @@ async def mock_telegram_config_entry(
 
 
 @pytest.fixture
+async def mock_receive_telegram_message(
+    hass: HomeAssistant,
+    mock_telegram_application: Application,
+    mock_telegram_config_entry: MockConfigEntry,
+) -> Callable[[str], Awaitable[None]]:
+    """Send a message from user to bot."""
+
+    handler = mock_telegram_application.add_handler.call_args[0][0]
+    handle_update_callback = handler.callback
+
+    async def send_message(text: str) -> None:
+        """Send a message to the bot."""
+        update_message_text = {
+            "update_id": 1,
+            "message": {
+                "message_id": 1,
+                "date": 1441645532,
+                "from": {
+                    "id": 12345678,
+                    "is_bot": False,
+                    "last_name": "Test Lastname",
+                    "first_name": "Test Firstname",
+                    "username": "Testusername",
+                },
+                "chat": {
+                    "last_name": "Test Lastname",
+                    "id": 12345678,
+                    "type": "private",
+                    "first_name": "Test Firstname",
+                    "username": "Testusername",
+                },
+                "text": text,
+            },
+        }
+
+        # Create Update object using library API.
+        update = Update.de_json(update_message_text, mock_telegram_application.bot)
+
+        # handle_update_callback == BaseTelegramBot.update_handler
+        await handle_update_callback(update, None)
+
+        # Make sure event has fired
+        await hass.async_block_till_done()
+
+    return send_message
+
+
+class MockConversationStreamingAgent(AbstractConversationAgent):
+    """Mock conversation agent with streaming support."""
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        """Initialize the mock conversation agent."""
+        self.hass = hass
+        self.response_mock: AsyncMock = AsyncMock()
+
+    @property
+    def supported_languages(self) -> list[str] | Literal["*"]:
+        """Return a list of supported languages."""
+        return MATCH_ALL
+
+    async def async_process(
+        self, user_input: conversation.ConversationInput
+    ) -> conversation.ConversationResult:
+        """Stream a mocked response into the chat log."""
+        with (
+            async_get_chat_session(self.hass, user_input.conversation_id) as session,
+            conversation.async_get_chat_log(self.hass, session, user_input) as chat_log,
+        ):
+            try:
+                await chat_log.async_provide_llm_data(
+                    user_input.as_llm_context(conversation.DOMAIN),
+                    None,
+                    "You are a helpful assistant",
+                    user_input.extra_system_prompt,
+                )
+            except conversation.ConverseError as err:
+                return err.as_conversation_result()
+
+            deltas = await self.response_mock(chat_log.content[-1])
+
+            async def _iter_deltas() -> AsyncGenerator[
+                conversation.AssistantContentDeltaDict
+            ]:
+                for delta in deltas:
+                    yield delta
+
+            async for _ in chat_log.async_add_delta_content_stream(
+                user_input.agent_id, _iter_deltas()
+            ):
+                pass
+
+            return conversation.async_get_result_from_chat_log(user_input, chat_log)
+
+
+@pytest.fixture
+async def mock_conversation_agent(
+    hass: HomeAssistant,
+) -> AsyncGenerator[AsyncMock]:
+    """Register a mock conversation agent."""
+
+    agent = MockConversationStreamingAgent(hass)
+    get_agent_manager(hass).async_set_agent("Mock Agent ID", agent)
+    await hass.async_block_till_done()
+
+    yield agent.response_mock
+
+    get_agent_manager(hass).async_unset_agent("Mock Agent ID")
+    await hass.async_block_till_done()
+
+
+@pytest.fixture
+async def mock_init_component(hass: HomeAssistant) -> None:
+    """Initialize integration."""
+    assert await async_setup_component(hass, DOMAIN, {})
+    await hass.async_block_till_done()
+
+
+@pytest.fixture
 async def mock_config_entry(
     hass,
     mock_init_component,
     hass_config_dir: str,
     mock_telegram_config_entry: MockConfigEntry,
-) -> MockConfigEntry:
+) -> AsyncGenerator[MockConfigEntry]:
     """Mock a config entry."""
 
     for telegram_subentry in mock_telegram_config_entry.subentries.values():
@@ -190,6 +327,8 @@ async def mock_config_entry(
     entry = MockConfigEntry(
         title=mock_telegram_config_entry.title,
         domain=DOMAIN,
+        version=1,
+        minor_version=2,
         data={CONF_TELEGRAM_ENTRY: mock_telegram_config_entry.entry_id},
         options={
             CONF_TMPDIR: hass_config_dir + "/www",
@@ -201,6 +340,7 @@ async def mock_config_entry(
                     CONF_TELEGRAM_SUBENTRY: telegram_subentry_id,
                     CONF_USER: await get_user_id(telegram_subentry.title),
                     CONF_CONVERSATION_TIMEOUT: {"minutes": 15},
+                    CONF_CONVERSATION_AGENT: "Mock Agent ID",
                     CONF_ATTACHMENTS: 15,
                     CONF_LATEX: False,
                     CONF_MERMAID: False,
@@ -221,21 +361,3 @@ async def mock_config_entry(
 
     await hass.config_entries.async_remove(entry.entry_id)
     await hass.async_block_till_done()
-
-
-@pytest.fixture
-async def mock_init_component(hass: HomeAssistant) -> None:
-    """Initialize integration."""
-    assert await async_setup_component(hass, DOMAIN, {})
-    await hass.async_block_till_done()
-
-
-@pytest.fixture(autouse=True)
-async def setup_ha(hass: HomeAssistant) -> None:
-    """Set up Home Assistant."""
-    hass.config.allowlist_external_dirs = {
-        hass.config.path("www"),
-        *hass.config.media_dirs.values(),
-    }
-    assert await async_setup_component(hass, "homeassistant", {})
-    assert await async_setup_component(hass, "intent", {})
