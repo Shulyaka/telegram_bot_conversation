@@ -269,7 +269,10 @@ class TelegramChatHandler:
         if config[CONF_ATTACHMENTS]:
             self.extra_prompt += "Long code blocks will be sent as files. "
         if config[CONF_MERMAID]:
-            self.extra_prompt += "Mermaid is supported as inline code blocks. "
+            self.extra_prompt += (
+                "Mermaid is supported as inline code blocks "
+                "and will be rendered to an image. "
+            )
         self.extra_prompt += (
             f"If the response message starts with any of {REACTION_EMOJI}, "
             "it will be added as a reaction to the user message."
@@ -1264,7 +1267,7 @@ class TelegramChatHandler:
         result: dict[str, Any] = await async_generate_image(
             self.hass,
             task_name=DOMAIN,
-            entity_id=self.config[CONF_AI_TASK],
+            entity_id=self.config.get(CONF_AI_TASK),
             instructions=prompt,
         )  # type: ignore[assignment]
 
