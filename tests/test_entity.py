@@ -1,6 +1,6 @@
 """Tests for telegram_bot_conversation entity."""
 
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock
 
 from pytest_homeassistant_custom_component.common import async_capture_events
@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant
 
 async def test_conversation_stream(
     hass: HomeAssistant,
-    mock_receive_telegram_message: Awaitable[str, None],
+    mock_receive_telegram_message: Callable[[str], Awaitable[None]],
     mock_conversation_agent: AsyncMock,
     mock_config_entry,
 ) -> None:
@@ -51,7 +51,7 @@ async def test_conversation_stream(
 
 async def test_conversation_nonstream(
     hass: HomeAssistant,
-    mock_receive_telegram_message: Awaitable[str, None],
+    mock_receive_telegram_message: Callable[[str], Awaitable[None]],
     mock_config_entry,
 ) -> None:
     """Test plain text conversation using a non-streaming agent."""
@@ -82,7 +82,7 @@ async def test_conversation_nonstream(
 
 async def test_prompt(
     hass: HomeAssistant,
-    mock_receive_telegram_message: Awaitable[str, None],
+    mock_receive_telegram_message: Callable[[str], Awaitable[None]],
     mock_conversation_agent: AsyncMock,
     mock_config_entry,
 ) -> None:
