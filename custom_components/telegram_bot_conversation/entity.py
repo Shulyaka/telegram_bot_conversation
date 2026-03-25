@@ -461,9 +461,8 @@ class TelegramChatHandler:
                                 and disable_web_prev
                             ):
                                 continue
-                            if (
-                                not disable_notification
-                            ):  # Cannot edit messages with a notification
+                            if text == last_text:
+                                # Cannot edit messages with a notification
                                 for message_id, _ in itertools.chain(
                                     [(message_id, last_text)], sent_drafts_iter
                                 ):  # Delete this draft and all remaining ones to maintain sequence
@@ -661,6 +660,13 @@ class TelegramChatHandler:
 
         except HomeAssistantError as e:
             if draft and "Flood control exceeded. Retry in " in str(e):
+                LOGGER.warning(
+                    "Telegram flood control hit for chat_id=%s, thread_id=%s: %s. "
+                    "Scheduling draft update after retry period.",
+                    self.chat_id,
+                    thread_id,
+                    e,
+                )
                 try:
                     if str(e).endswith(" seconds"):
                         retry_after = float(
@@ -680,6 +686,8 @@ class TelegramChatHandler:
                     retry_after,
                     context,
                 )
+            else:
+                raise
         finally:
             if created_files:
                 await self.hass.async_add_executor_job(cleanup_created_files)
