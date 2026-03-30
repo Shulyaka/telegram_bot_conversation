@@ -1,6 +1,6 @@
 """Intents for the Telegram Bot Conversation integration."""
 
-from typing import Any
+from typing import Any, cast
 
 import voluptuous as vol
 
@@ -49,9 +49,8 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
             and event.event_type in (EVENT_TELEGRAM_TEXT, EVENT_TELEGRAM_ATTACHMENT)
         )
 
-    async def _get_event(
-        self, intent_obj: intent.Intent
-    ) -> tuple[Context, Event] | None:
+    @callback
+    def _get_event(self, intent_obj: intent.Intent) -> tuple[Context, Event] | None:
         """Extract the Telegram event from the intent."""
         hass = intent_obj.hass
 
@@ -69,8 +68,8 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
                 "chat for the user by context"
             )
             # Trying to be smart and get the right chat even if no event is available
-            user_id_map: dict[str | None, list[tuple[str, Any]]] = {}
-            user_id_private_chat_map: dict[str | None, list[tuple[str, Any]]] = {}
+            user_id_map: dict[str | None, list[tuple[str, int]]] = {}
+            user_id_private_chat_map: dict[str | None, list[tuple[str, int]]] = {}
             for entry in hass.config_entries.async_entries(DOMAIN):
                 if entry.state != ConfigEntryState.LOADED:
                     continue
@@ -95,7 +94,10 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
                     ):
                         continue
                     user_id_map.setdefault(subentry_user_id, []).append(
-                        (telegram_entry_id, telegram_subentry.data.get(CONF_CHAT_ID))
+                        (
+                            telegram_entry_id,
+                            cast(int, telegram_subentry.data.get(CONF_CHAT_ID)),
+                        )
                     )
                     if telegram_subentry.data.get(CONF_CHAT_ID, 0) > 0:
                         user_id_private_chat_map.setdefault(
@@ -103,7 +105,7 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
                         ).append(
                             (
                                 telegram_entry_id,
-                                telegram_subentry.data.get(CONF_CHAT_ID),
+                                cast(int, telegram_subentry.data.get(CONF_CHAT_ID)),
                             )
                         )
 
@@ -165,7 +167,7 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
             for k, v in self.async_validate_slots(intent_obj.slots).items()
         }
 
-        if (result := await self._get_event(intent_obj)) is not None:
+        if (result := self._get_event(intent_obj)) is not None:
             context, event = result
         else:
             response = intent_obj.create_response()
