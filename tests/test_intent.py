@@ -9,6 +9,7 @@ from custom_components.telegram_bot_conversation.const import DOMAIN
 from custom_components.telegram_bot_conversation.intent import INTENT_GENERATE_IMAGE
 from homeassistant.components.telegram_bot.const import (
     ATTR_CHAT_ID,
+    ATTR_MESSAGE_THREAD_ID,
     CONF_CONFIG_ENTRY_ID,
     EVENT_TELEGRAM_TEXT,
 )
@@ -29,6 +30,7 @@ def _telegram_context(
         event_type,
         {
             ATTR_CHAT_ID: chat_id,
+            ATTR_MESSAGE_THREAD_ID: 0,
             "bot": {CONF_CONFIG_ENTRY_ID: telegram_entry_id},
         },
     )
@@ -80,12 +82,15 @@ async def test_generate_image_intent_requires_prompt_slot(
         )
 
 
-async def test_generate_image_intent_rejects_non_telegram_context(
+async def test_generate_image_intent_non_telegram_context(
     hass: HomeAssistant,
     mock_config_entry,
+    mock_telegram_config_entry,
 ) -> None:
-    """Test the image intent is rejected outside Telegram event contexts."""
-    runtime_handler = SimpleNamespace(handle_generate_image_intent=AsyncMock())
+    """Test the image intent is handled outside Telegram event contexts in certain cases."""
+    runtime_handler = SimpleNamespace(
+        handle_generate_image_intent=AsyncMock(return_value="Image sent")
+    )
     mock_config_entry.runtime_data = runtime_handler
 
     response = await intent.async_handle(
@@ -96,11 +101,20 @@ async def test_generate_image_intent_rejects_non_telegram_context(
         context=Context(),
     )
 
-    runtime_handler.handle_generate_image_intent.assert_not_awaited()
-    assert response.error_code == intent.IntentResponseErrorCode.FAILED_TO_HANDLE
-    assert response.speech["plain"]["speech"] == (
-        "This tool is only supported for the Telegram Bot Conversation integration."
+    context = _telegram_context(mock_telegram_config_entry.entry_id)
+    runtime_handler.handle_generate_image_intent.assert_awaited_once()
+    (call_event, call_context), call_kwargs = (
+        runtime_handler.handle_generate_image_intent.await_args
     )
+    assert call_kwargs == {"prompt": "Draw a fox"}
+    assert call_event.event_type == context.origin_event.event_type
+    assert call_event.data == context.origin_event.data
+    assert call_context.user_id == next(
+        iter(mock_config_entry.subentries.values())
+    ).data.get("user_id")
+
+    assert response.error_code is None
+    assert response.speech["plain"]["speech"] == "Image sent"
 
 
 async def test_generate_image_intent_returns_handler_error(
