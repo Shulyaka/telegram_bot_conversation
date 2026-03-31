@@ -915,6 +915,32 @@ class TelegramChatHandler:
             matches = [e for e in REACTION_EMOJI if content.lstrip().startswith(e)]
             return max(matches, key=len) if matches else None
 
+        async def clear_drafts(thread_id: int, context: Context) -> None:
+            """Send an empty non-draft message to clear any existing drafts."""
+            try:
+                await self.send_message(
+                    thread_id=thread_id,
+                    context=context,
+                )
+            except HomeAssistantError as err:
+                LOGGER.error(
+                    "Error clearing draft for chat_id=%s, thread_id=%s: %s",
+                    self.chat_id,
+                    thread_id,
+                    err,
+                    exc_info=err,
+                )
+                message = async_translate_message(
+                    self.hass,
+                    translation_key="conversation_error",
+                    translation_placeholders={"error": str(err)},
+                )
+                await self.send_message(
+                    message=message,
+                    thread_id=thread_id,
+                    context=context,
+                )
+
         async with current_conversation.delta_lock:
             LOGGER.debug("Chat log delta: %s", delta)
             if "role" in delta:
@@ -952,55 +978,10 @@ class TelegramChatHandler:
                                 exc_info=err,
                             )
                     else:
-                        # Clear drafts
-                        try:
-                            await self.send_message(
-                                thread_id=thread_id,
-                                context=context,
-                            )
-                        except HomeAssistantError as err:
-                            LOGGER.error(
-                                "Error clearing draft for chat_id=%s, thread_id=%s: %s",
-                                self.chat_id,
-                                thread_id,
-                                err,
-                                exc_info=err,
-                            )
-                            message = async_translate_message(
-                                self.hass,
-                                translation_key="conversation_error",
-                                translation_placeholders={"error": str(err)},
-                            )
-                            await self.send_message(
-                                message=message,
-                                thread_id=thread_id,
-                                context=context,
-                            )
+                        await clear_drafts(thread_id, context)
                 elif delta["role"] is None:
-                    # Also clear drafts
-                    try:
-                        await self.send_message(
-                            thread_id=thread_id,
-                            context=context,
-                        )
-                    except HomeAssistantError as err:
-                        LOGGER.error(
-                            "Error clearing draft for chat_id=%s, thread_id=%s: %s",
-                            self.chat_id,
-                            thread_id,
-                            err,
-                            exc_info=err,
-                        )
-                        message = async_translate_message(
-                            self.hass,
-                            translation_key="conversation_error",
-                            translation_placeholders={"error": str(err)},
-                        )
-                        await self.send_message(
-                            message=message,
-                            thread_id=thread_id,
-                            context=context,
-                        )
+                    await clear_drafts(thread_id, context)
+
                 if delta["role"] == "assistant":
                     current_conversation.draft = AssistantContentDeltaDict(
                         role="assistant",
