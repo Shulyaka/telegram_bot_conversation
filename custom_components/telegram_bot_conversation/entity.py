@@ -393,6 +393,8 @@ class TelegramChatHandler:
             max_message_length=MAX_TELEGRAM_LENGTH,
         )
 
+        LOGGER.debug("Sending %s message(s), draft=%s", len(items), draft)
+
         try:
             async with current_conversation.send_lock:
                 if (
@@ -468,12 +470,19 @@ class TelegramChatHandler:
                                 and disable_notification
                                 and disable_web_prev
                             ):
+                                LOGGER.debug(
+                                    "Leaving message %s as is since text, notification, and web preview are unchanged",
+                                    message_id,
+                                )
                                 continue
                             if text == last_text:
                                 # Cannot edit messages with a notification
                                 for message_id, _ in itertools.chain(
                                     [(message_id, last_text)], sent_drafts_iter
                                 ):  # Delete this draft and all remaining ones to maintain sequence
+                                    LOGGER.debug(
+                                        "Deleting message to resend with notification or web preview"
+                                    )
                                     await self.hass.services.async_call(
                                         TELEGRAM_DOMAIN,
                                         SERVICE_DELETE_MESSAGE,
@@ -487,6 +496,7 @@ class TelegramChatHandler:
                                         blocking=True,
                                         context=context,
                                     )
+                                    LOGGER.debug("Deleting message done")
 
                                     current_conversation.sent_drafts.pop(
                                         message_id, None
@@ -494,6 +504,7 @@ class TelegramChatHandler:
                                 raise StopIteration  # noqa: TRY301
 
                             if draft or item.content_type == ContentType.TEXT:
+                                LOGGER.debug("Editing message with updated text")
                                 await self.hass.services.async_call(
                                     TELEGRAM_DOMAIN,
                                     SERVICE_EDIT_MESSAGE,
@@ -510,10 +521,12 @@ class TelegramChatHandler:
                                     blocking=True,
                                     context=context,
                                 )
+                                LOGGER.debug("Editing message done")
                             elif item.content_type in (
                                 ContentType.PHOTO,
                                 ContentType.FILE,
                             ):
+                                LOGGER.debug("Editing message with media")
                                 await self.hass.services.async_call(
                                     TELEGRAM_DOMAIN,
                                     SERVICE_EDIT_MESSAGE_MEDIA,
@@ -541,6 +554,7 @@ class TelegramChatHandler:
                                     blocking=True,
                                     context=context,
                                 )
+                                LOGGER.debug("Editing message done")
                             messages["chats"].append(
                                 {
                                     ATTR_CHAT_ID: self.chat_id,
@@ -551,6 +565,7 @@ class TelegramChatHandler:
                         except StopIteration:
                             # Message was not sent yet, create.
                             if draft or item.content_type == ContentType.TEXT:
+                                LOGGER.debug("Sending text message")
                                 item_messages: dict[str, list[dict[str, Any]]] = (
                                     await self.hass.services.async_call(
                                         TELEGRAM_DOMAIN,
@@ -572,10 +587,12 @@ class TelegramChatHandler:
                                     )  # type: ignore[assignment]
                                     or {"chats": []}
                                 )
+                                LOGGER.debug("Sending text message done")
                             elif item.content_type in (
                                 ContentType.PHOTO,
                                 ContentType.FILE,
                             ):
+                                LOGGER.debug("Sending media")
                                 item_messages = await self.hass.services.async_call(
                                     TELEGRAM_DOMAIN,
                                     SERVICE_SEND_PHOTO
@@ -604,6 +621,7 @@ class TelegramChatHandler:
                                     context=context,
                                     return_response=True,
                                 ) or {"chats": []}  # type: ignore[assignment]
+                                LOGGER.debug("Sending media done")
 
                             messages["chats"].extend(item_messages["chats"])
                             await asyncio.wait_for(
@@ -627,6 +645,7 @@ class TelegramChatHandler:
 
                 # Delete the remaining draft messages if there are more drafts than current content items
                 for message_id, _ in sent_drafts_iter:
+                    LOGGER.debug("Deleting remaining message")
                     await self.hass.services.async_call(
                         TELEGRAM_DOMAIN,
                         SERVICE_DELETE_MESSAGE,
@@ -640,6 +659,7 @@ class TelegramChatHandler:
                         blocking=True,
                         context=context,
                     )
+                    LOGGER.debug("Deleting remaining message done")
 
                     current_conversation.sent_drafts.pop(message_id, None)
 
@@ -647,6 +667,7 @@ class TelegramChatHandler:
                     item = items[-1]
                     text = entities_to_markdownv2(item.text, item.entities)
 
+                    LOGGER.debug("Sending draft")
                     await self.hass.services.async_call(
                         TELEGRAM_DOMAIN,
                         SERVICE_SEND_MESSAGE_DRAFT,
@@ -663,8 +684,7 @@ class TelegramChatHandler:
                         blocking=True,
                         context=context,
                     )
-                elif not draft:
-                    current_conversation.sent_drafts = None
+                    LOGGER.debug("Sending draft done")
 
         except HomeAssistantError as e:
             if draft and "Flood control exceeded. Retry in " in str(e):
@@ -699,6 +719,9 @@ class TelegramChatHandler:
         finally:
             if created_files:
                 await self.hass.async_add_executor_job(cleanup_created_files)
+
+            if not draft:
+                current_conversation.sent_drafts = None
 
         return messages
 
@@ -913,24 +936,71 @@ class TelegramChatHandler:
                             )
                         )
                     ):
-                        await self.async_handle_chat_log_event(
-                            thread_id=thread_id,
-                            event_type=ChatLogEventType.CONTENT_ADDED,
-                            data={"content": current_conversation.draft},
-                            context=context,
-                        )
+                        try:
+                            await self.async_handle_chat_log_event(
+                                thread_id=thread_id,
+                                event_type=ChatLogEventType.CONTENT_ADDED,
+                                data={"content": current_conversation.draft},
+                                context=context,
+                            )
+                        except HomeAssistantError as err:
+                            LOGGER.error(
+                                "Error sending message for chat_id=%s, thread_id=%s: %s",
+                                self.chat_id,
+                                thread_id,
+                                err,
+                                exc_info=err,
+                            )
                     else:
                         # Clear drafts
+                        try:
+                            await self.send_message(
+                                thread_id=thread_id,
+                                context=context,
+                            )
+                        except HomeAssistantError as err:
+                            LOGGER.error(
+                                "Error clearing draft for chat_id=%s, thread_id=%s: %s",
+                                self.chat_id,
+                                thread_id,
+                                err,
+                                exc_info=err,
+                            )
+                            message = async_translate_message(
+                                self.hass,
+                                translation_key="conversation_error",
+                                translation_placeholders={"error": str(err)},
+                            )
+                            await self.send_message(
+                                message=message,
+                                thread_id=thread_id,
+                                context=context,
+                            )
+                elif delta["role"] is None:
+                    # Also clear drafts
+                    try:
                         await self.send_message(
                             thread_id=thread_id,
                             context=context,
                         )
-                elif delta["role"] is None:
-                    # Also clear drafts
-                    await self.send_message(
-                        thread_id=thread_id,
-                        context=context,
-                    )
+                    except HomeAssistantError as err:
+                        LOGGER.error(
+                            "Error clearing draft for chat_id=%s, thread_id=%s: %s",
+                            self.chat_id,
+                            thread_id,
+                            err,
+                            exc_info=err,
+                        )
+                        message = async_translate_message(
+                            self.hass,
+                            translation_key="conversation_error",
+                            translation_placeholders={"error": str(err)},
+                        )
+                        await self.send_message(
+                            message=message,
+                            thread_id=thread_id,
+                            context=context,
+                        )
                 if delta["role"] == "assistant":
                     current_conversation.draft = AssistantContentDeltaDict(
                         role="assistant",
@@ -1047,11 +1117,24 @@ class TelegramChatHandler:
             ):
                 if current_conversation.draft_cancel:
                     current_conversation.draft_cancel()
-                await self.send_message(
-                    message=message,
-                    thread_id=thread_id,
-                    context=context,
-                )
+                try:
+                    await self.send_message(
+                        message=message,
+                        thread_id=thread_id,
+                        context=context,
+                    )
+                except HomeAssistantError as err:
+                    message = async_translate_message(
+                        self.hass,
+                        translation_key="conversation_error",
+                        translation_placeholders={"error": str(err)},
+                    )
+                    await self.send_message(
+                        message=message,
+                        thread_id=thread_id,
+                        context=context,
+                    )
+                    raise
 
     @callback
     def _reset_conversation_history(self, thread_id: int) -> None:
