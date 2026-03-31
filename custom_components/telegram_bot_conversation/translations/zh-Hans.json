@@ -1,0 +1,105 @@
+{
+  "common": {
+    "conversation_agent_updated": "对话代理已切换为：`{agent_id}`",
+    "conversation_error": "错误：{error}",
+    "current_conversation_agent": "当前对话代理：`{agent_id}`",
+    "new_conversation": "新对话已开始。",
+    "thinking": "_思考中..._"
+  },
+  "config": {
+    "abort": {
+      "already_configured": "所有 Telegram 聊天均已配置",
+      "no_telegram_bot_entries": "未找到 Telegram Bot 配置条目。请先配置 Telegram Bot 集成，然后再配置此集成。"
+    },
+    "step": {
+      "user": {
+        "data": {
+          "telegram_entry": "Telegram Bot 配置条目"
+        },
+        "data_description": {
+          "telegram_entry": "选择要与此集成关联的 Telegram Bot 配置。"
+        },
+        "description": "连接到 Telegram Bot 集成。"
+      }
+    }
+  },
+  "config_subentries": {
+    "telegram_id": {
+      "abort": {
+        "all_telegram_entries_configured": "所有 Telegram Bot 条目均已配置。请重新配置现有条目，或向 telegram bot 集成添加新的子条目。",
+        "entry_not_loaded": "配置被禁用时无法添加内容。",
+        "reconfigure_successful": "重新配置成功"
+      },
+      "entry_type": "Telegram 聊天",
+      "error": {
+        "telegram_subentry_already_configured": "此聊天已为另一个子条目配置。请选择其他 Telegram Bot，或重新配置现有子条目。"
+      },
+      "initiate_flow": {
+        "reconfigure": "重新配置此 Telegram 聊天",
+        "user": "添加 Telegram 聊天"
+      },
+      "step": {
+        "init": {
+          "data": {
+            "ai_task": "AI 任务",
+            "attachments": "附件",
+            "conversation_agent": "对话代理。",
+            "conversation_timeout": "对话超时",
+            "latex": "LaTeX",
+            "mermaid": "Mermaid",
+            "telegram_subentry": "Telegram 聊天",
+            "thoughts": "思考",
+            "user_id": "Home Assistant 用户",
+            "web_page_preview": "网页预览"
+          },
+          "data_description": {
+            "ai_task": "用于图像生成的 AI 任务实体。",
+            "attachments": "代码块至少需要多少行才会作为文件发送。设为 0 可禁用此功能。",
+            "conversation_agent": "此聊天要使用的对话代理。",
+            "conversation_timeout": "覆盖默认对话超时以管理上下文。如果聊天中断时间超过此值，机器人将忽略消息历史。",
+            "latex": "将 LaTeX 转换为 Unicode。",
+            "mermaid": "将消息中的 Mermaid 图表渲染为图片。",
+            "telegram_subentry": "要与此集成关联的 Telegram 子条目。",
+            "thoughts": "在实际回复可用之前，将代理的思考作为临时消息显示。",
+            "user_id": "选择要与此 Telegram 聊天关联的 Home Assistant 用户。",
+            "web_page_preview": "在消息中显示链接预览"
+          },
+          "description": "为每个要连接的 Telegram 聊天创建一个子条目。",
+          "title": "Telegram 聊天配置"
+        }
+      }
+    }
+  },
+  "issues": {
+    "all_telegram_entries_configured": {
+      "description": "请同时从 Telegram Bot Conversation 集成中删除对应的配置子条目。",
+      "title": "Telegram Bot 配置子条目已被移除"
+    },
+    "no_telegram_bot_entries": {
+      "description": "请先重新配置 Telegram Bot 集成，然后再重新配置 Telegram Bot Conversation 集成。",
+      "title": "未找到 Telegram Bot 配置条目"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "tmpdir": "临时目录"
+        },
+        "data_description": {
+          "tmpdir": "上传到 Telegram 时用于存储临时文件的目录。你可以在 configuration.yaml 中将新目录添加到 allowlist_external_dirs"
+        },
+        "description": "配置 Telegram Bot conversation 的选项。"
+      }
+    }
+  },
+  "selector": {
+    "web_page_preview": {
+      "options": {
+        "last": "仅对长回复中的最后一条消息启用",
+        "off": "禁用",
+        "on": "启用"
+      }
+    }
+  }
+}
