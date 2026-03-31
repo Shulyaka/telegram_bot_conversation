@@ -372,7 +372,7 @@ async def async_migrate_entry(
 
         for subentry in entry.subentries.values():
             data = subentry.data.copy()
-            disable_web_page_preview = data.get(CONF_DISABLE_WEB_PREV)
+            disable_web_page_preview = data.pop(CONF_DISABLE_WEB_PREV, None)
             if disable_web_page_preview is None:
                 continue
             data[CONF_WEB_PREVIEW] = (

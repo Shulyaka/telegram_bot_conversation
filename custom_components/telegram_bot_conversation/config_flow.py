@@ -245,7 +245,7 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_LATEX, default=True): bool,
                 vol.Optional(CONF_MERMAID, default=True): bool,
                 vol.Optional(
-                    CONF_WEB_PREVIEW, default=WebPreview.LAST
+                    CONF_WEB_PREVIEW, default=WebPreview.LAST.value
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=[x.value for x in WebPreview],
