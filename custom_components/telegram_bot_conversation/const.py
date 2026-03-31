@@ -1,5 +1,6 @@
 """Constants for telegram_bot_conversation."""
 
+from enum import StrEnum
 from logging import Logger, getLogger
 
 LOGGER: Logger = getLogger(__package__)
@@ -15,9 +16,17 @@ CONF_ATTACHMENTS = "attachments"
 CONF_LATEX = "latex"
 CONF_MERMAID = "mermaid"
 CONF_TMPDIR = "tmpdir"
-CONF_DISABLE_WEB_PREV = "disable_web_page_preview"
+CONF_WEB_PREVIEW = "web_page_preview"
 CONF_THOUGHTS = "thoughts"
 CONF_AI_TASK = "ai_task"
+
+
+class WebPreview(StrEnum):
+    """Web page preview options."""
+
+    ON = "on"
+    OFF = "off"
+    LAST = "last"
 
 
 REACTION_EMOJI = [

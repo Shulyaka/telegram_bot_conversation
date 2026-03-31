@@ -7,7 +7,6 @@ import pytest
 from custom_components.telegram_bot_conversation.const import (
     CONF_ATTACHMENTS,
     CONF_CONVERSATION_TIMEOUT,
-    CONF_DISABLE_WEB_PREV,
     CONF_LATEX,
     CONF_MERMAID,
     CONF_TELEGRAM_ENTRY,
@@ -15,6 +14,7 @@ from custom_components.telegram_bot_conversation.const import (
     CONF_THOUGHTS,
     CONF_TMPDIR,
     CONF_USER,
+    CONF_WEB_PREVIEW,
     DOMAIN,
 )
 from homeassistant import config_entries, data_entry_flow
@@ -112,7 +112,7 @@ async def test_subentry_reconfigure_flow(
             CONF_ATTACHMENTS: 25,
             CONF_LATEX: True,
             CONF_MERMAID: True,
-            CONF_DISABLE_WEB_PREV: False,
+            CONF_WEB_PREVIEW: "on",
             CONF_THOUGHTS: True,
         },
     )
@@ -132,5 +132,5 @@ async def test_subentry_reconfigure_flow(
     assert updated_subentry.data[CONF_ATTACHMENTS] == 25
     assert updated_subentry.data[CONF_LATEX] is True
     assert updated_subentry.data[CONF_MERMAID] is True
-    assert updated_subentry.data[CONF_DISABLE_WEB_PREV] is False
+    assert updated_subentry.data[CONF_WEB_PREVIEW] == "on"
     assert updated_subentry.data[CONF_THOUGHTS] is True

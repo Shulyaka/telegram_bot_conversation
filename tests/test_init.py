@@ -10,8 +10,8 @@ from pytest_homeassistant_custom_component.common import (
 from custom_components.telegram_bot_conversation import TelegramBotConversationHandler
 from custom_components.telegram_bot_conversation.const import (
     CONF_ATTACHMENTS,
+    CONF_CONVERSATION_AGENT,
     CONF_CONVERSATION_TIMEOUT,
-    CONF_DISABLE_WEB_PREV,
     CONF_LATEX,
     CONF_MERMAID,
     CONF_TELEGRAM_ENTRY,
@@ -19,6 +19,7 @@ from custom_components.telegram_bot_conversation.const import (
     CONF_THOUGHTS,
     CONF_TMPDIR,
     CONF_USER,
+    CONF_WEB_PREVIEW,
     DOMAIN,
 )
 from custom_components.telegram_bot_conversation.recursive_data_flow import (
@@ -203,7 +204,7 @@ async def test_migration_from_v1_1(
             CONF_ATTACHMENTS: 15,
             CONF_LATEX: False,
             CONF_MERMAID: False,
-            CONF_DISABLE_WEB_PREV: True,
+            CONF_WEB_PREVIEW: "off",
             CONF_THOUGHTS: False,
         },
         subentries_data=[
@@ -233,7 +234,7 @@ async def test_migration_from_v1_1(
     assert len(entries) == 1
     entry = entries[0]
     assert entry.version == 1
-    assert entry.minor_version == 2
+    assert entry.minor_version == 3
     assert entry.data == {CONF_TELEGRAM_ENTRY: mock_telegram_config_entry.entry_id}
     assert entry.options == {CONF_TMPDIR: hass_config_dir + "/www"}
     assert len(entry.subentries) == len(mock_telegram_config_entry.subentries)
@@ -247,5 +248,82 @@ async def test_migration_from_v1_1(
         assert subentry.data[CONF_ATTACHMENTS] == 15
         assert subentry.data[CONF_LATEX] is False
         assert subentry.data[CONF_MERMAID] is False
-        assert subentry.data[CONF_DISABLE_WEB_PREV] is True
+        assert subentry.data[CONF_WEB_PREVIEW] == "off"
         assert subentry.data[CONF_THOUGHTS] is False
+
+
+async def test_migration_from_v1_2(
+    hass: HomeAssistant,
+    hass_config_dir: str,
+    mock_telegram_config_entry: MockConfigEntry,
+) -> None:
+    """Test migration from version 1.2."""
+    for telegram_subentry in mock_telegram_config_entry.subentries.values():
+        await hass.auth.async_create_user(name=telegram_subentry.title)
+
+    async def get_user_id(name: str) -> str | None:
+        for user in await hass.auth.async_get_users():
+            if user.name == name and not user.system_generated:
+                return user.id
+        return None
+
+    mock_config_entry = MockConfigEntry(
+        title=mock_telegram_config_entry.title,
+        domain=DOMAIN,
+        version=1,
+        minor_version=2,
+        data={CONF_TELEGRAM_ENTRY: mock_telegram_config_entry.entry_id},
+        options={
+            CONF_TMPDIR: hass_config_dir + "/www",
+        },
+        subentries_data=[
+            {
+                "subentry_type": "telegram_id",
+                "data": {
+                    CONF_TELEGRAM_SUBENTRY: telegram_subentry_id,
+                    CONF_USER: await get_user_id(telegram_subentry.title),
+                    CONF_CONVERSATION_TIMEOUT: {"minutes": 15},
+                    CONF_CONVERSATION_AGENT: "Mock Agent ID",
+                    CONF_ATTACHMENTS: 15,
+                    CONF_LATEX: False,
+                    CONF_MERMAID: False,
+                    "disable_web_page_preview": False,
+                    CONF_THOUGHTS: False,
+                },
+                "title": telegram_subentry.title,
+                "unique_id": None,
+            }
+            for telegram_subentry_id, telegram_subentry in mock_telegram_config_entry.subentries.items()
+        ],
+    )
+    mock_config_entry.add_to_hass(hass)
+
+    # Run migration
+    with patch(
+        "custom_components.telegram_bot_conversation.async_setup_entry",
+        return_value=True,
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entries = hass.config_entries.async_entries(DOMAIN)
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.version == 1
+    assert entry.minor_version == 3
+    assert entry.data == {CONF_TELEGRAM_ENTRY: mock_telegram_config_entry.entry_id}
+    assert entry.options == {CONF_TMPDIR: hass_config_dir + "/www"}
+    assert len(entry.subentries) == len(mock_telegram_config_entry.subentries)
+    for subentry in entry.subentries.values():
+        assert subentry.subentry_type == "telegram_id"
+        assert (
+            subentry.data[CONF_TELEGRAM_SUBENTRY]
+            in mock_telegram_config_entry.subentries
+        )
+        assert subentry.data[CONF_CONVERSATION_TIMEOUT] == {"minutes": 15}
+        assert subentry.data[CONF_ATTACHMENTS] == 15
+        assert subentry.data[CONF_LATEX] is False
+        assert subentry.data[CONF_MERMAID] is False
+        assert subentry.data[CONF_THOUGHTS] is False
+        assert subentry.data[CONF_CONVERSATION_AGENT] == "Mock Agent ID"
+        assert subentry.data[CONF_WEB_PREVIEW] == "on"

@@ -41,8 +41,10 @@ from .const import (
     CONF_TELEGRAM_SUBENTRY,
     CONF_TMPDIR,
     CONF_USER,
+    CONF_WEB_PREVIEW,
     DOMAIN,
     LOGGER,
+    WebPreview,
 )
 from .entity import TelegramChatHandler
 from .recursive_data_flow import validate_data, validate_options, validate_subentry_data
@@ -363,6 +365,24 @@ async def async_migrate_entry(
             data = subentry.data.copy()
             data.update(options)
             hass.config_entries.async_update_subentry(entry, subentry, data=data)
+
+    if entry.version == 1 and entry.minor_version == 2:
+        # Migrate disable_web_page_preview option
+        CONF_DISABLE_WEB_PREV = "disable_web_page_preview"
+
+        for subentry in entry.subentries.values():
+            data = subentry.data.copy()
+            disable_web_page_preview = data.pop(CONF_DISABLE_WEB_PREV, None)
+            if disable_web_page_preview is None:
+                continue
+            data[CONF_WEB_PREVIEW] = (
+                WebPreview.OFF.value
+                if disable_web_page_preview
+                else WebPreview.ON.value
+            )
+            hass.config_entries.async_update_subentry(entry, subentry, data=data)
+
+        hass.config_entries.async_update_entry(entry, minor_version=3)
 
     LOGGER.debug(
         "Migration to version %s:%s successful", entry.version, entry.minor_version

@@ -45,24 +45,24 @@
             "attachments": "Attachments",
             "conversation_agent": "Conversation agent.",
             "conversation_timeout": "Conversation timeout",
-            "disable_web_page_preview": "Disable web page preview",
             "latex": "LaTeX",
             "mermaid": "Mermaid",
             "telegram_subentry": "Telegram chat",
             "thoughts": "Thoughts",
-            "user_id": "Home Assistant user"
+            "user_id": "Home Assistant user",
+            "web_page_preview": "Web page preview"
           },
           "data_description": {
             "ai_task": "AI Task entity for image generation.",
             "attachments": "Minimum number of lines in a code block to be sent as files. Set to 0 to disable the functionality.",
             "conversation_agent": "Conversation agent to use for this chat.",
             "conversation_timeout": "Overwrite default conversation timeout for context management. The bot will ignore message history if the chat is interrupted for longer than this time.",
-            "disable_web_page_preview": "Disable link previews for links in the message",
             "latex": "Convert LaTeX to Unicode.",
             "mermaid": "Render Mermaid diagrams in messages as images.",
             "telegram_subentry": "Telegram subentry to link with this integration.",
             "thoughts": "Include the agent's thoughts as temporary messages before the actual response becomes available.",
-            "user_id": "Select a Home Assistant user to link with this Telegram chat."
+            "user_id": "Select a Home Assistant user to link with this Telegram chat.",
+            "web_page_preview": "Show previews for links in the message"
           },
           "description": "Create a subentry for each Telegram chat you want to connect.",
           "title": "Telegram Chat Configuration"
@@ -90,6 +90,15 @@
           "tmpdir": "Directory to store temporary files while they are being uploaded to Telegram. You can add a new directory in configuration.yaml as allowlist_external_dirs"
         },
         "description": "Configure options for Telegram Bot conversation."
+      }
+    }
+  },
+  "selector": {
+    "web_page_preview": {
+      "options": {
+        "last": "Only for the last message in a long response",
+        "off": "Disabled",
+        "on": "Enabled"
       }
     }
   }
