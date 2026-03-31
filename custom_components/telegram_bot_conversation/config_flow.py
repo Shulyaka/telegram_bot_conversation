@@ -20,7 +20,6 @@ from .const import (
     CONF_ATTACHMENTS,
     CONF_CONVERSATION_AGENT,
     CONF_CONVERSATION_TIMEOUT,
-    CONF_DISABLE_WEB_PREV,
     CONF_LATEX,
     CONF_MERMAID,
     CONF_TELEGRAM_ENTRY,
@@ -28,7 +27,9 @@ from .const import (
     CONF_THOUGHTS,
     CONF_TMPDIR,
     CONF_USER,
+    CONF_WEB_PREVIEW,
     DOMAIN,
+    WebPreview,
 )
 from .recursive_data_flow import AbortRecursiveFlow, RecursiveConfigFlow
 
@@ -37,7 +38,7 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
     """Handle config and options flow for Telegram Bot Conversation."""
 
     VERSION = 1
-    MINOR_VERSION = 2
+    MINOR_VERSION = 3
 
     async def async_validate_input(
         self, step_id: str, user_input: dict[str, Any]
@@ -243,7 +244,16 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_ATTACHMENTS, default=20): cv.positive_int,
                 vol.Optional(CONF_LATEX, default=True): bool,
                 vol.Optional(CONF_MERMAID, default=True): bool,
-                vol.Optional(CONF_DISABLE_WEB_PREV, default=False): bool,
+                vol.Optional(
+                    CONF_WEB_PREVIEW, default=WebPreview.LAST
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[x.value for x in WebPreview],
+                        translation_key=CONF_WEB_PREVIEW,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
                 vol.Optional(CONF_THOUGHTS, default=True): bool,
                 vol.Optional(CONF_AI_TASK): selector.EntitySelector(
                     selector.EntitySelectorConfig(

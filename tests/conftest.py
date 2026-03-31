@@ -15,7 +15,6 @@ from custom_components.telegram_bot_conversation.const import (
     CONF_ATTACHMENTS,
     CONF_CONVERSATION_AGENT,
     CONF_CONVERSATION_TIMEOUT,
-    CONF_DISABLE_WEB_PREV,
     CONF_LATEX,
     CONF_MERMAID,
     CONF_TELEGRAM_ENTRY,
@@ -23,6 +22,7 @@ from custom_components.telegram_bot_conversation.const import (
     CONF_THOUGHTS,
     CONF_TMPDIR,
     CONF_USER,
+    CONF_WEB_PREVIEW,
     DOMAIN,
 )
 from homeassistant.components import conversation
@@ -328,7 +328,7 @@ async def mock_config_entry(
         title=mock_telegram_config_entry.title,
         domain=DOMAIN,
         version=1,
-        minor_version=2,
+        minor_version=3,
         data={CONF_TELEGRAM_ENTRY: mock_telegram_config_entry.entry_id},
         options={
             CONF_TMPDIR: hass_config_dir + "/www",
@@ -344,7 +344,7 @@ async def mock_config_entry(
                     CONF_ATTACHMENTS: 15,
                     CONF_LATEX: False,
                     CONF_MERMAID: False,
-                    CONF_DISABLE_WEB_PREV: True,
+                    CONF_WEB_PREVIEW: "last",
                     CONF_THOUGHTS: False,
                 },
                 "title": telegram_subentry.title,

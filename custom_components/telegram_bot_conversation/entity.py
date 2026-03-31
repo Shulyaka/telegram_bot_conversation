@@ -89,16 +89,17 @@ from .const import (
     CONF_ATTACHMENTS,
     CONF_CONVERSATION_AGENT,
     CONF_CONVERSATION_TIMEOUT,
-    CONF_DISABLE_WEB_PREV,
     CONF_LATEX,
     CONF_MERMAID,
     CONF_TELEGRAM_ENTRY,
     CONF_THOUGHTS,
     CONF_TMPDIR,
     CONF_USER,
+    CONF_WEB_PREVIEW,
     DOMAIN,
     LOGGER,
     REACTION_EMOJI,
+    WebPreview,
 )
 
 try:
@@ -450,7 +451,14 @@ class TelegramChatHandler:
                             continue
 
                         disable_notification = draft or item is not items[-1]
-                        disable_web_prev = draft or self.config[CONF_DISABLE_WEB_PREV]
+                        disable_web_prev = (
+                            draft
+                            or self.config[CONF_WEB_PREVIEW] == WebPreview.OFF
+                            or (
+                                self.config[CONF_WEB_PREVIEW] == WebPreview.LAST
+                                and item is not items[-1]
+                            )
+                        )
 
                         try:
                             message_id, last_text = next(sent_drafts_iter)
