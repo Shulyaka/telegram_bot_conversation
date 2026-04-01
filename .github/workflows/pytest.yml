@@ -2,10 +2,10 @@ name: CI
 
 # yamllint disable-line rule:truthy
 on:
-  - push:
-      branches:
-        - main
-  - pull_request:
+  push:
+    branches:
+      - main
+  pull_request:
 
 permissions: {}
 
