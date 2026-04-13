@@ -1,0 +1,105 @@
+{
+  "common": {
+    "conversation_agent_updated": "Agente di conversazione impostato su: `{agent_id}`",
+    "conversation_error": "Errore: {error}",
+    "current_conversation_agent": "Agente di conversazione attuale: `{agent_id}`",
+    "new_conversation": "Nuova conversazione avviata.",
+    "thinking": "_Sto pensando..._"
+  },
+  "config": {
+    "abort": {
+      "already_configured": "Tutte le chat Telegram sono già configurate",
+      "no_telegram_bot_entries": "Nessuna configurazione di Telegram Bot trovata. Configura prima l'integrazione Telegram Bot e poi configura questa integrazione."
+    },
+    "step": {
+      "user": {
+        "data": {
+          "telegram_entry": "Voce di configurazione Telegram Bot"
+        },
+        "data_description": {
+          "telegram_entry": "Seleziona la configurazione di Telegram Bot da collegare a questa integrazione."
+        },
+        "description": "Connettiti all'integrazione Telegram Bot."
+      }
+    }
+  },
+  "config_subentries": {
+    "telegram_id": {
+      "abort": {
+        "all_telegram_entries_configured": "Tutte le voci di Telegram Bot sono già configurate. Riconfigura una voce esistente oppure aggiungi una nuova sotto-voce all'integrazione telegram bot.",
+        "entry_not_loaded": "Impossibile aggiungere elementi mentre la configurazione è disabilitata.",
+        "reconfigure_successful": "Riconfigurazione completata con successo"
+      },
+      "entry_type": "Chat Telegram",
+      "error": {
+        "telegram_subentry_already_configured": "Questa chat è già configurata per un'altra sotto-voce. Seleziona un altro Telegram Bot oppure riconfigura la sotto-voce esistente."
+      },
+      "initiate_flow": {
+        "reconfigure": "Riconfigura questa chat Telegram",
+        "user": "Aggiungi chat Telegram"
+      },
+      "step": {
+        "init": {
+          "data": {
+            "ai_task": "Attività IA",
+            "attachments": "Allegati",
+            "conversation_agent": "Agente di conversazione.",
+            "conversation_timeout": "Timeout della conversazione",
+            "latex": "LaTeX",
+            "mermaid": "Mermaid",
+            "telegram_subentry": "Chat Telegram",
+            "thoughts": "Pensieri",
+            "user_id": "Utente Home Assistant",
+            "web_page_preview": "Anteprima pagina web"
+          },
+          "data_description": {
+            "ai_task": "Entità attività IA per la generazione di immagini.",
+            "attachments": "Numero minimo di righe in un blocco di codice per inviarlo come file. Imposta 0 per disabilitare questa funzionalità.",
+            "conversation_agent": "Agente di conversazione da usare per questa chat.",
+            "conversation_timeout": "Sovrascrive il timeout predefinito della conversazione per la gestione del contesto. Il bot ignorerà la cronologia dei messaggi se la chat viene interrotta per più tempo di questo valore.",
+            "latex": "Converti LaTeX in Unicode.",
+            "mermaid": "Renderizza i diagrammi Mermaid nei messaggi come immagini.",
+            "telegram_subentry": "Sotto-voce Telegram da collegare a questa integrazione.",
+            "thoughts": "Includi i pensieri dell'agente come messaggi temporanei prima che la risposta effettiva sia disponibile.",
+            "user_id": "Seleziona un utente Home Assistant da collegare a questa chat Telegram.",
+            "web_page_preview": "Mostra le anteprime dei link nel messaggio"
+          },
+          "description": "Crea una sotto-voce per ogni chat Telegram che desideri collegare.",
+          "title": "Configurazione chat Telegram"
+        }
+      }
+    }
+  },
+  "issues": {
+    "all_telegram_entries_configured": {
+      "description": "Rimuovi anche la sotto-voce di configurazione corrispondente dall'integrazione Telegram Bot Conversation.",
+      "title": "La sotto-voce di configurazione di Telegram Bot è stata rimossa"
+    },
+    "no_telegram_bot_entries": {
+      "description": "Riconfigura prima l'integrazione Telegram Bot e poi riconfigura l'integrazione Telegram Bot Conversation.",
+      "title": "Nessuna voce di configurazione Telegram Bot trovata"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "tmpdir": "Directory temporanea"
+        },
+        "data_description": {
+          "tmpdir": "Directory in cui archiviare i file temporanei durante il caricamento su Telegram. Puoi aggiungere una nuova directory in configuration.yaml come allowlist_external_dirs"
+        },
+        "description": "Configura le opzioni per Telegram Bot conversation."
+      }
+    }
+  },
+  "selector": {
+    "web_page_preview": {
+      "options": {
+        "last": "Solo per l'ultimo messaggio di una risposta lunga",
+        "off": "Disabilitato",
+        "on": "Abilitato"
+      }
+    }
+  }
+}

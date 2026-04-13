@@ -1,0 +1,105 @@
+{
+  "common": {
+    "conversation_agent_updated": "Агент диалога переключён на: `{agent_id}`",
+    "conversation_error": "Ошибка: {error}",
+    "current_conversation_agent": "Текущий агент диалога: `{agent_id}`",
+    "new_conversation": "Новый диалог начат.",
+    "thinking": "_Думаю..._"
+  },
+  "config": {
+    "abort": {
+      "already_configured": "Все чаты Telegram уже настроены",
+      "no_telegram_bot_entries": "Записи конфигурации Telegram Bot не найдены. Пожалуйста, сначала настройте интеграцию Telegram Bot, а затем настраивайте эту интеграцию."
+    },
+    "step": {
+      "user": {
+        "data": {
+          "telegram_entry": "Запись конфигурации Telegram Bot"
+        },
+        "data_description": {
+          "telegram_entry": "Выберите конфигурацию Telegram Bot, которую нужно связать с этой интеграцией."
+        },
+        "description": "Подключиться к интеграции Telegram Bot."
+      }
+    }
+  },
+  "config_subentries": {
+    "telegram_id": {
+      "abort": {
+        "all_telegram_entries_configured": "Все записи Telegram Bot уже настроены. Пожалуйста, перенастройте существующую запись или добавьте новую подзапись в интеграцию telegram bot.",
+        "entry_not_loaded": "Невозможно добавлять элементы, пока конфигурация отключена.",
+        "reconfigure_successful": "Перенастройка выполнена успешно"
+      },
+      "entry_type": "Чат Telegram",
+      "error": {
+        "telegram_subentry_already_configured": "Этот чат уже настроен для другой подзаписи. Пожалуйста, выберите другого Telegram Bot или перенастройте существующую подзапись."
+      },
+      "initiate_flow": {
+        "reconfigure": "Перенастроить этот чат Telegram",
+        "user": "Добавить чат Telegram"
+      },
+      "step": {
+        "init": {
+          "data": {
+            "ai_task": "Задача ИИ",
+            "attachments": "Вложения",
+            "conversation_agent": "Агент диалога.",
+            "conversation_timeout": "Тайм-аут диалога",
+            "latex": "LaTeX",
+            "mermaid": "Mermaid",
+            "telegram_subentry": "Чат Telegram",
+            "thoughts": "Мысли",
+            "user_id": "Пользователь Home Assistant",
+            "web_page_preview": "Предпросмотр веб-страниц"
+          },
+          "data_description": {
+            "ai_task": "Сущность задачи ИИ для генерации изображений.",
+            "attachments": "Минимальное количество строк в блоке кода, чтобы отправить его как файл. Установите 0, чтобы отключить эту функцию.",
+            "conversation_agent": "Агент диалога, который будет использоваться для этого чата.",
+            "conversation_timeout": "Переопределяет тайм-аут диалога по умолчанию для управления контекстом. Бот будет игнорировать историю сообщений, если чат прерывался дольше этого времени.",
+            "latex": "Преобразовывать LaTeX в Unicode.",
+            "mermaid": "Преобразовывать диаграммы Mermaid в сообщениях в изображения.",
+            "telegram_subentry": "Подзапись Telegram, которую нужно связать с этой интеграцией.",
+            "thoughts": "Показывать мысли агента как временные сообщения до появления фактического ответа.",
+            "user_id": "Выберите пользователя Home Assistant, которого нужно связать с этим чатом Telegram.",
+            "web_page_preview": "Показывать предпросмотр ссылок в сообщении"
+          },
+          "description": "Создайте подзапись для каждого чата Telegram, который хотите подключить.",
+          "title": "Настройка чата Telegram"
+        }
+      }
+    }
+  },
+  "issues": {
+    "all_telegram_entries_configured": {
+      "description": "Пожалуйста, также удалите соответствующую подзапись конфигурации из интеграции Telegram Bot Conversation.",
+      "title": "Подзапись конфигурации Telegram Bot была удалена"
+    },
+    "no_telegram_bot_entries": {
+      "description": "Пожалуйста, сначала перенастройте интеграцию Telegram Bot, а затем перенастройте интеграцию Telegram Bot Conversation.",
+      "title": "Записи конфигурации Telegram Bot не найдены"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "tmpdir": "Временный каталог"
+        },
+        "data_description": {
+          "tmpdir": "Каталог для хранения временных файлов во время их загрузки в Telegram. Вы можете добавить новый каталог в configuration.yaml как allowlist_external_dirs"
+        },
+        "description": "Настройка параметров Telegram Bot conversation."
+      }
+    }
+  },
+  "selector": {
+    "web_page_preview": {
+      "options": {
+        "last": "Только для последнего сообщения в длинном ответе",
+        "off": "Отключено",
+        "on": "Включено"
+      }
+    }
+  }
+}
