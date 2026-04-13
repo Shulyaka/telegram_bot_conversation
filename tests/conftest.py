@@ -133,7 +133,7 @@ def mock_telegram_external_calls() -> Generator[None]:
         return [
             Message(
                 message_id=12345 + idx,
-                date=datetime.now(),
+                date=datetime.now(UTC),
                 chat=Chat(id=chat_id, type=ChatType.PRIVATE),
             )
             for idx, _ in enumerate(kwargs[ATTR_MEDIA])
@@ -162,7 +162,7 @@ def mock_telegram_external_calls() -> Generator[None]:
                     1,
                     Message(
                         1,
-                        datetime.now(),
+                        datetime.now(UTC),
                         Chat(
                             id=123456,
                             type=ChatType.PRIVATE,
