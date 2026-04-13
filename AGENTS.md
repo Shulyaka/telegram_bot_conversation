@@ -18,7 +18,7 @@ scripts/bootstrap --full   # Full setup including all HA test dependencies
 **Testing:**
 
 ```bash
-scripts/run-in-env.sh pytest                     # Run all tests
+scripts/run-in-env.sh pytest                                         # Run all tests
 scripts/run-in-env.sh pytest tests/test_entity.py                    # Run a single test file
 scripts/run-in-env.sh pytest tests/test_entity.py::test_function     # Run a single test
 scripts/run-in-env.sh pytest --cov custom_components/telegram_bot_conversation --cov-report=term-missing  # With coverage
@@ -77,7 +77,7 @@ uv run mypy custom_components/telegram_bot_conversation
 ```
 Telegram message → EVENT_TELEGRAM_* → TelegramBotConversationHandler (filter + route)
   → TelegramChatHandler.async_handle_text() → async_get_chat_session() + async_converse()
-  → Streaming response with draft updates → telegramify + formatting → telegram_bot.send_message
+  → Streaming response with draft updates → telegramify + formatting → telegram_bot.send_message / edit_message
 ```
 
 ### Key Patterns
