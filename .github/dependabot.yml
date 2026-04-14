@@ -32,6 +32,6 @@ updates:
       # Same for python-telegram-bot, it should match the version specified in manifest.json of telegram_bot integration
       - dependency-name: "python-telegram-bot[socks]"
       # The version of telegramify_markdown should match the version specified in manifest.json of this integration
-      - dependency-name: "telegramify_markdown[mermaid]"
+      - dependency-name: "telegramify-markdown[mermaid]"
     cooldown:
       default-days: 7
