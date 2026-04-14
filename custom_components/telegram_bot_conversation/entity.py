@@ -901,16 +901,21 @@ class TelegramChatHandler:
                 )
             raise error
 
-        if conversation_result.response.response_type == IntentResponseType.ERROR:
+        if (
+            conversation_result.response.response_type == IntentResponseType.ERROR
+            and (content := conversation_result.response.speech["plain"]["speech"])
+            and not (
+                chat_log.content[-1].role == "assistant"
+                and chat_log.content[-1].content == content
+            )
+        ):
             await self.async_handle_chat_log_event(
                 thread_id=thread_id,
                 event_type=ChatLogEventType.CONTENT_ADDED,
                 data={
                     "content": {
                         "role": "assistant",
-                        "content": conversation_result.response.speech["plain"][
-                            "speech"
-                        ],
+                        "content": content,
                     }
                 },
                 context=context,
