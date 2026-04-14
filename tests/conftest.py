@@ -29,7 +29,6 @@ from homeassistant.components import conversation
 from homeassistant.components.conversation.agent_manager import get_agent_manager
 from homeassistant.components.conversation.models import AbstractConversationAgent
 from homeassistant.components.telegram_bot.const import (
-    ATTR_MEDIA,
     ATTR_PARSER,
     CONF_ALLOWED_CHAT_IDS,
     CONF_API_ENDPOINT,
@@ -44,6 +43,11 @@ from homeassistant.const import CONF_API_KEY, CONF_PLATFORM, MATCH_ALL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.chat_session import async_get_chat_session
 from homeassistant.setup import async_setup_component
+
+try:
+    from homeassistant.components.telegram_bot.const import ATTR_MEDIA
+except ImportError:
+    ATTR_MEDIA = None
 
 
 # This fixture enables loading custom integrations in all tests.
@@ -174,6 +178,7 @@ def mock_telegram_external_calls() -> Generator[None]:
         ),
         patch.object(BotMock, "log_out", return_value=True),
         patch("telegram.ext.Updater._bootstrap"),
+        patch.object(BotMock, "send_chat_action", return_value=True),
     ):
         yield
 
