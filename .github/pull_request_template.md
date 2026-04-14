@@ -2,15 +2,17 @@
   You are amazing! Thanks for contributing to our project!
   Please, DO NOT DELETE ANY TEXT from this template! (unless instructed).
 -->
+
 ## Breaking change
+
 <!--
   If your PR contains a breaking change for existing users, it is important
   to tell them what breaks, how to make it work again and why we did this.
   Note: Remove this section if this PR is NOT a breaking change.
 -->
 
-
 ## Proposed change
+
 <!--
   Describe the big picture of your changes here to communicate to the
   maintainers why we should accept this pull request. If it fixes a bug
@@ -18,8 +20,8 @@
   additional information section.
 -->
 
-
 ## Type of change
+
 <!--
   What type of change does your PR introduce to this custom component?
   NOTE: Please, check only 1! box!
@@ -35,15 +37,17 @@
 - [ ] Code quality improvements to existing code or addition of tests
 
 ## Additional information
+
 <!--
   Details are important, and help maintainers processing your PR.
   Please be sure to fill out additional details, if applicable.
 -->
 
 - This PR fixes or closes issue: fixes #
-- This PR is related to issue: 
+- This PR is related to issue:
 
 ## Checklist
+
 <!--
   Put an `x` in the boxes that apply. You can also fill these out after
   creating the PR. If you're unsure about any of them, don't hesitate to ask.
@@ -64,7 +68,6 @@
 - [ ] I have updated the [README](README.md) accordingly
 - [ ] I have updated the translations if needed
 - [ ] Any generated code has been carefully reviewed for correctness and compliance with project standards.
-
 
 <!--
   Thank you for contributing <3
