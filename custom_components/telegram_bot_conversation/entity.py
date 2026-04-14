@@ -43,6 +43,7 @@ from homeassistant.components.telegram_bot.const import (
     ATTR_FILE_ID,
     ATTR_FILE_MIME_TYPE,
     ATTR_FILE_PATH,
+    ATTR_IS_BIG,
     ATTR_KEYBOARD_INLINE,
     ATTR_MEDIA_TYPE,
     ATTR_MESSAGE,
@@ -81,6 +82,7 @@ from homeassistant.helpers.chat_session import (
     async_get_chat_session,
 )
 from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.intent import IntentResponseType
 from homeassistant.helpers.translation import async_get_cached_translations
 from homeassistant.util import dt as dt_util
 
@@ -865,7 +867,7 @@ class TelegramChatHandler:
                 input_text = event.data.get(ATTR_TEXT) or ""
 
             try:
-                await async_converse(
+                conversation_result = await async_converse(
                     self.hass,
                     text=input_text,
                     conversation_id=session.conversation_id,
@@ -898,6 +900,21 @@ class TelegramChatHandler:
                     context=context,
                 )
             raise error
+
+        if conversation_result.response.response_type == IntentResponseType.ERROR:
+            await self.async_handle_chat_log_event(
+                thread_id=thread_id,
+                event_type=ChatLogEventType.CONTENT_ADDED,
+                data={
+                    "content": {
+                        "role": "assistant",
+                        "content": conversation_result.response.speech["plain"][
+                            "speech"
+                        ],
+                    }
+                },
+                context=context,
+            )
 
     async def async_chat_log_delta_listener(
         self,
@@ -1047,6 +1064,7 @@ class TelegramChatHandler:
                                 ATTR_MESSAGE_ID: msg_id or "last",
                                 ATTR_CHAT_ID: self.chat_id,
                                 ATTR_REACTION: reaction,
+                                ATTR_IS_BIG: True,
                             },
                             context=context,
                         )
