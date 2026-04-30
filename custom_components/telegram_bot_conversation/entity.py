@@ -841,7 +841,10 @@ class TelegramChatHandler:
 
                 mime_type = event.data.get(ATTR_FILE_MIME_TYPE, "")
                 if mime_type.startswith("text/"):
-                    input_text = f"{file_path.name}:\n```{mime_type[5:].removeprefix('plain')}\n{file_path.read_text()}\n```"
+                    content = await self.hass.async_add_executor_job(
+                        file_path.read_text
+                    )
+                    input_text = f"{file_path.name}:\n```{mime_type[5:].removeprefix('plain')}\n{content}\n```"
                     if event.data.get(ATTR_TEXT):
                         input_text += f"\n\n{event.data.get(ATTR_TEXT)}"
                 else:
