@@ -839,19 +839,25 @@ class TelegramChatHandler:
                     )[ATTR_FILE_PATH]  # type: ignore[index]
                 )
 
-                input_text = event.data.get(ATTR_TEXT) or file_path.name
-                chat_log.async_add_user_content(
-                    UserContent(
-                        input_text,  # Must be exactly same text as in async_converse
-                        attachments=[
-                            Attachment(
-                                media_content_id=f"media-source://{TELEGRAM_DOMAIN}/{event.data.get(ATTR_FILE_ID)}",
-                                mime_type=event.data.get(ATTR_FILE_MIME_TYPE),  # type: ignore[arg-type]
-                                path=file_path,
-                            )
-                        ],
+                mime_type = event.data.get(ATTR_FILE_MIME_TYPE, "")
+                if mime_type.startswith("text/"):
+                    input_text = f"{file_path.name}:\n```{mime_type[5:].removeprefix('plain')}\n{file_path.read_text()}\n```"
+                    if event.data.get(ATTR_TEXT):
+                        input_text += f"\n\n{event.data.get(ATTR_TEXT)}"
+                else:
+                    input_text = event.data.get(ATTR_TEXT) or file_path.name
+                    chat_log.async_add_user_content(
+                        UserContent(
+                            input_text,  # Must be exactly same text as in async_converse
+                            attachments=[
+                                Attachment(
+                                    media_content_id=f"media-source://{TELEGRAM_DOMAIN}/{event.data.get(ATTR_FILE_ID)}",
+                                    mime_type=mime_type,
+                                    path=file_path,
+                                )
+                            ],
+                        )
                     )
-                )
 
                 def cleanup_file() -> None:
                     """Cleanup temporary file."""
