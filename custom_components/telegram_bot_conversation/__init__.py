@@ -115,7 +115,7 @@ class TelegramBotConversationHandler:
         self.notify_to_chat_id_map: dict[str, int] = {
             entity_id: telegram_id_map[subentry_id]
             for subentry_id, entity_id in telegram_notify_map.items()
-            if subentry_id is not None
+            if subentry_id is not None and subentry_id in telegram_id_map
         }
 
         user_id_map: dict[int, str] = {
