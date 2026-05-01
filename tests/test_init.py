@@ -36,6 +36,7 @@ from homeassistant.components.conversation.chat_log import DATA_CHAT_LOGS
 from homeassistant.components.telegram_bot.const import (
     ATTR_CHAT_ID,
     ATTR_MESSAGE,
+    ATTR_MESSAGE_TAG,
     ATTR_MESSAGE_THREAD_ID,
     CONF_CHAT_ID,
     CONF_CONFIG_ENTRY_ID,
@@ -43,8 +44,14 @@ from homeassistant.components.telegram_bot.const import (
     SERVICE_SEND_MESSAGE,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ENTITY_ID
-from homeassistant.core import Context, HomeAssistant
+from homeassistant.const import (
+    ATTR_DOMAIN,
+    ATTR_ENTITY_ID,
+    ATTR_SERVICE,
+    ATTR_SERVICE_DATA,
+    EVENT_CALL_SERVICE,
+)
+from homeassistant.core import Context, Event, HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.chat_session import DATA_CHAT_SESSION, async_get_chat_session
 
@@ -175,6 +182,82 @@ async def test_new_command_clears_history_immediately(
         async_get_chat_log(hass, session) as chat_log,
     ):
         assert [content.role for content in chat_log.content] == ["system"]
+
+
+async def test_manual_send_message_service_call_adds_assistant_history_entry(
+    hass: HomeAssistant,
+    mock_telegram_config_entry,
+    mock_config_entry,
+) -> None:
+    """Test manual telegram_bot.send_message calls are added to chat history."""
+    _, telegram_subentry = next(iter(mock_telegram_config_entry.subentries.items()))
+    chat_id = telegram_subentry.data[CONF_CHAT_ID]
+    thread_id = 42
+    conversation_id = f"telegram_{chat_id}_{thread_id}"
+    handler = TelegramBotConversationHandler(
+        hass, mock_config_entry, *await _get_config(hass, mock_config_entry)
+    )
+
+    event = Event(
+        EVENT_CALL_SERVICE,
+        {
+            ATTR_DOMAIN: TELEGRAM_DOMAIN,
+            ATTR_SERVICE: SERVICE_SEND_MESSAGE,
+            ATTR_SERVICE_DATA: {
+                ATTR_CHAT_ID: chat_id,
+                ATTR_MESSAGE: "Manual message",
+                ATTR_MESSAGE_THREAD_ID: thread_id,
+            },
+        },
+        context=Context(),
+    )
+    assert handler.service_call_filter(event.data)
+
+    await handler.async_handle_service_call(event)
+
+    assert conversation_id in hass.data[DATA_CHAT_SESSION]
+    assert conversation_id in hass.data[DATA_CHAT_LOGS]
+
+    chat_log = hass.data[DATA_CHAT_LOGS][conversation_id]
+    assert len(chat_log.content) == 2
+    assert chat_log.content[-1].role == "assistant"
+    assert chat_log.content[-1].agent_id == EVENT_CALL_SERVICE
+    assert chat_log.content[-1].content == "Manual message"
+
+
+async def test_tagged_send_message_service_call_does_not_add_history_entry(
+    hass: HomeAssistant,
+    mock_telegram_config_entry,
+    mock_config_entry,
+) -> None:
+    """Test integration-tagged send_message calls are ignored by the listener."""
+    _, telegram_subentry = next(iter(mock_telegram_config_entry.subentries.items()))
+    chat_id = telegram_subentry.data[CONF_CHAT_ID]
+    thread_id = 42
+    conversation_id = f"telegram_{chat_id}_{thread_id}"
+    handler = TelegramBotConversationHandler(
+        hass, mock_config_entry, *await _get_config(hass, mock_config_entry)
+    )
+
+    event = Event(
+        EVENT_CALL_SERVICE,
+        {
+            ATTR_DOMAIN: TELEGRAM_DOMAIN,
+            ATTR_SERVICE: SERVICE_SEND_MESSAGE,
+            ATTR_SERVICE_DATA: {
+                ATTR_CHAT_ID: chat_id,
+                ATTR_MESSAGE: "Integration message",
+                ATTR_MESSAGE_TAG: DOMAIN,
+                ATTR_MESSAGE_THREAD_ID: thread_id,
+            },
+        },
+        context=Context(),
+    )
+
+    assert not handler.service_call_filter(event.data)
+
+    assert conversation_id not in hass.data.get(DATA_CHAT_SESSION, {})
+    assert conversation_id not in hass.data.get(DATA_CHAT_LOGS, {})
 
 
 async def test_migration_from_v1_1(

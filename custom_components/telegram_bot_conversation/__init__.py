@@ -22,16 +22,26 @@ from homeassistant.components.conversation.const import ChatLogEventType
 from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
 from homeassistant.components.telegram_bot.const import (
     ATTR_CHAT_ID,
+    ATTR_MESSAGE_TAG,
     ATTR_USERNAME,
     CONF_CHAT_ID,
     CONF_CONFIG_ENTRY_ID,
+    DOMAIN as TELEGRAM_DOMAIN,
     EVENT_TELEGRAM_ATTACHMENT,
     EVENT_TELEGRAM_CALLBACK,
     EVENT_TELEGRAM_COMMAND,
     EVENT_TELEGRAM_TEXT,
+    SERVICE_SEND_MESSAGE,
     SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import (
+    ATTR_DOMAIN,
+    ATTR_ENTITY_ID,
+    ATTR_SERVICE,
+    ATTR_SERVICE_DATA,
+    EVENT_CALL_SERVICE,
+)
 from homeassistant.core import Context, Event, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import entity_registry as er, issue_registry as ir
@@ -102,6 +112,12 @@ class TelegramBotConversationHandler:
             and entity_entry.domain == NOTIFY_DOMAIN
         }
 
+        self.notify_to_chat_id_map: dict[str, int] = {
+            entity_id: telegram_id_map[subentry_id]
+            for subentry_id, entity_id in telegram_notify_map.items()
+            if subentry_id is not None and subentry_id in telegram_id_map
+        }
+
         user_id_map: dict[int, str] = {
             telegram_id_map[data[CONF_TELEGRAM_SUBENTRY]]: str(data.get(CONF_USER))
             for data in subentries_data.values()
@@ -158,6 +174,14 @@ class TelegramBotConversationHandler:
                 EVENT_TELEGRAM_CALLBACK,
                 self.async_handle_callback,
                 self.callback_events_filter,
+            )
+        )
+
+        self.entry.async_on_unload(
+            self.hass.bus.async_listen(
+                EVENT_CALL_SERVICE,
+                self.async_handle_service_call,
+                self.service_call_filter,
             )
         )
 
@@ -271,6 +295,52 @@ class TelegramBotConversationHandler:
             and event_data.get("bot", {}).get(CONF_CONFIG_ENTRY_ID)
             == self.telegram_entry_id
             and event_data.get(ATTR_CHAT_ID) in self.chat_handlers
+        )
+
+    async def async_handle_service_call(self, event: Event) -> None:
+        """Handle service call events."""
+        service = event.data[ATTR_SERVICE]
+        service_data = event.data.get(ATTR_SERVICE_DATA) or {}
+        chat_ids: set[int] = set()
+        if (service_chat_ids := service_data.get(ATTR_CHAT_ID)) is not None:
+            if isinstance(service_chat_ids, list):
+                chat_ids.update(service_chat_ids)
+            else:
+                chat_ids.add(service_chat_ids)
+
+        if (notify_entity_id := service_data.get(ATTR_ENTITY_ID)) is not None:
+            if not isinstance(notify_entity_id, list):
+                notify_entity_id = [notify_entity_id]
+            for entity_id in notify_entity_id:
+                chat_id = self.notify_to_chat_id_map.get(entity_id)
+                if chat_id is not None:
+                    chat_ids.add(chat_id)
+
+        for chat_id in chat_ids:
+            handler = self.chat_handlers.get(chat_id)
+            if handler is not None:
+                try:
+                    await handler.async_handle_service_call(
+                        service, service_data, event.context
+                    )
+                except Exception as e:  # noqa: BLE001
+                    LOGGER.exception(
+                        "Error handling service call event for chat_id=%s: %s",
+                        chat_id,
+                        e,
+                    )
+
+    @callback
+    def service_call_filter(self, event_data: Mapping[str, Any]) -> bool:
+        """Filter service call events."""
+        return (
+            event_data.get(ATTR_DOMAIN) == TELEGRAM_DOMAIN
+            and event_data.get(ATTR_SERVICE) == SERVICE_SEND_MESSAGE
+            and event_data.get(ATTR_SERVICE_DATA, {}).get(ATTR_MESSAGE_TAG) != DOMAIN
+            and event_data.get(ATTR_SERVICE_DATA, {}).get(
+                CONF_CONFIG_ENTRY_ID, self.telegram_entry_id
+            )
+            == self.telegram_entry_id
         )
 
     async def handle_generate_image_intent(

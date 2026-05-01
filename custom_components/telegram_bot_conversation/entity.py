@@ -16,6 +16,7 @@ from telegramify_markdown.content import ContentType
 
 from homeassistant.components.ai_task import async_generate_image
 from homeassistant.components.conversation import (
+    AssistantContent,
     AssistantContentDeltaDict,
     Attachment,
     ChatLog,
@@ -27,7 +28,11 @@ from homeassistant.components.conversation import (
 )
 from homeassistant.components.conversation.agent_manager import get_agent_manager
 from homeassistant.components.conversation.chat_log import DATA_CHAT_LOGS
-from homeassistant.components.conversation.const import DATA_COMPONENT, ChatLogEventType
+from homeassistant.components.conversation.const import (
+    DATA_COMPONENT,
+    HOME_ASSISTANT_AGENT,
+    ChatLogEventType,
+)
 from homeassistant.components.media_source import async_resolve_media
 from homeassistant.components.telegram_bot import (  # type: ignore[attr-defined]
     InputMediaType,
@@ -48,12 +53,14 @@ from homeassistant.components.telegram_bot.const import (
     ATTR_MEDIA_TYPE,
     ATTR_MESSAGE,
     ATTR_MESSAGE_ID,
+    ATTR_MESSAGE_TAG,
     ATTR_MESSAGE_THREAD_ID,
     ATTR_MSG,
     ATTR_MSGID,
     ATTR_PARSER,
     ATTR_REACTION,
     ATTR_TEXT,
+    ATTR_TITLE,
     ATTR_USER_ID,
     CHAT_ACTION_TYPING,
     CHAT_ACTION_UPLOAD_PHOTO,
@@ -73,7 +80,7 @@ from homeassistant.components.telegram_bot.const import (
     SERVICE_SET_MESSAGE_REACTION,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.const import ATTR_ENTITY_ID, EVENT_CALL_SERVICE
 from homeassistant.core import CALLBACK_TYPE, Context, Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.chat_session import (
@@ -582,6 +589,7 @@ class TelegramChatHandler:
                                             ATTR_PARSER: "markdownv2",
                                             ATTR_DISABLE_NOTIF: disable_notification,
                                             ATTR_DISABLE_WEB_PREV: disable_web_prev,
+                                            ATTR_MESSAGE_TAG: DOMAIN,
                                         },
                                         blocking=True,
                                         context=context,
@@ -618,6 +626,7 @@ class TelegramChatHandler:
                                         CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
                                         ATTR_DISABLE_NOTIF: disable_notification,
                                         ATTR_PARSER: "markdownv2",
+                                        ATTR_MESSAGE_TAG: DOMAIN,
                                     },
                                     blocking=True,
                                     context=context,
@@ -1035,7 +1044,8 @@ class TelegramChatHandler:
                                     if tool_call.id not in responded_tool_calls:
                                         chat_log.async_add_assistant_content_without_tools(
                                             ToolResultContent(
-                                                agent_id=self.agent_id or "",
+                                                agent_id=self.agent_id
+                                                or HOME_ASSISTANT_AGENT,
                                                 tool_call_id=tool_call.id,
                                                 tool_name=tool_call.tool_name,
                                                 tool_result={
@@ -1120,7 +1130,9 @@ class TelegramChatHandler:
         """Handle chat log events."""
         # async_subscribe_chat_logs does not provide context, ensure user_id is set
         context = self._get_context(context)
-        current_conversation = self.conversations[thread_id]
+        current_conversation = self.conversations.setdefault(
+            thread_id, ConversationConfig()
+        )
         async with current_conversation.content_lock:
             if (
                 event_type == ChatLogEventType.CONTENT_ADDED
@@ -1128,6 +1140,9 @@ class TelegramChatHandler:
                 and content.get("role") == "assistant"
                 and (message := content.get("content"))
             ):
+                if content.get("agent_id") == EVENT_CALL_SERVICE:
+                    return
+
                 if current_conversation.draft_cancel:
                     current_conversation.draft_cancel()
                 try:
@@ -1352,6 +1367,45 @@ class TelegramChatHandler:
                 context=context,
             )
 
+    async def async_handle_service_call(
+        self, service: str, service_data: dict[str, Any], context: Context
+    ) -> None:
+        """Handle service call events."""
+        LOGGER.debug("Service call event: %s, data: %s", service, service_data)
+
+        thread_id = service_data.get(ATTR_MESSAGE_THREAD_ID) or 0
+        conversation_id = self._get_conversation_id(thread_id)
+
+        def add_external_message(_: asyncio.Task[None] | None) -> None:
+            """Add messages sent from outside of the integration to the chat log."""
+            title = service_data.get(ATTR_TITLE)
+            message = service_data.get(ATTR_MESSAGE, "")
+            with (
+                async_get_chat_session(self.hass, conversation_id) as session,
+                async_get_chat_log(self.hass, session) as chat_log,
+            ):
+                chat_log.async_add_assistant_content_without_tools(
+                    AssistantContent(
+                        EVENT_CALL_SERVICE,
+                        f"{title}\n{message}" if title else message,
+                    )
+                )
+
+            timeout = self.config[CONF_CONVERSATION_TIMEOUT]
+            session.last_updated = (
+                dt_util.utcnow() + timedelta(**timeout) - CONVERSATION_TIMEOUT
+            )
+
+        if current_conversation := self.conversations.get(thread_id):
+            task = current_conversation.task
+        else:
+            task = None
+
+        if task:
+            task.add_done_callback(add_external_message)
+        else:
+            add_external_message(None)
+
     async def handle_generate_image_intent(
         self, event: Event, context: Context, prompt: str
     ) -> str:
@@ -1394,6 +1448,7 @@ class TelegramChatHandler:
                 ATTR_MESSAGE_THREAD_ID: thread_id,
                 CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
                 ATTR_PARSER: "markdownv2",
+                ATTR_MESSAGE_TAG: DOMAIN,
             },
             blocking=True,
             context=context,
