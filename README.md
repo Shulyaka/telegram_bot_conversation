@@ -27,3 +27,4 @@ This is a Home Assistant custom integration that allows you to use the [Telegram
 - Attachments are supported if your agent supports them (usually only images and pdf, and only for the last message; also text files are inserted inline)
 - Group chats are supported (requires a separate config subentry for both `telegram_bot` and `telegram_bot_conversation`).
 - Partial support for threaded bots (awaiting `telegram_bot` for full support)
+- Manual `telegram_bot.send_message` service call support (they are added to the conversation history)
