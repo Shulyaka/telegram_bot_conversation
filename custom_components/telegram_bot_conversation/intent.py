@@ -50,7 +50,9 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
         )
 
     @callback
-    def _get_event(self, intent_obj: intent.Intent) -> tuple[Context, Event] | None:
+    def _get_event(
+        self, intent_obj: intent.Intent
+    ) -> tuple[Context, Event[dict[str, Any]]] | None:
         """Extract the Telegram event from the intent."""
         hass = intent_obj.hass
 
