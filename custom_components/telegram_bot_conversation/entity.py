@@ -887,7 +887,7 @@ class TelegramChatHandler:
                             pyogg.OpusFileStream, file_path.as_posix()
                         )
                         metadata = stt.SpeechMetadata(
-                            language=self.hass.config.language,
+                            language=stt_entity.supported_languages[0],
                             format=stt.AudioFormats.OGG,
                             codec=stt.AudioCodecs.OPUS,
                             bit_rate=stt.AudioBitRates.BITRATE_16,
