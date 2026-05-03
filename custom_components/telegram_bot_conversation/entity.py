@@ -94,7 +94,7 @@ from homeassistant.helpers.chat_session import (
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.intent import IntentResponseType
 from homeassistant.helpers.translation import async_get_cached_translations
-from homeassistant.util import dt as dt_util
+from homeassistant.util import dt as dt_util, language as language_util
 
 from .const import (
     CONF_AI_TASK,
@@ -886,8 +886,20 @@ class TelegramChatHandler:
                         opus_file = await self.hass.async_add_executor_job(
                             pyogg.OpusFileStream, file_path.as_posix()
                         )
+
+                        try:
+                            stt_language = language_util.matches(
+                                self.hass.config.language,
+                                stt_entity.supported_languages,
+                                country=self.hass.config.country,
+                            )[0]
+                        except KeyError:
+                            raise HomeAssistantError(
+                                f"STT entity {stt_entity.entity_id} does not support the language: {self.hass.config.language}"
+                            ) from None
+
                         metadata = stt.SpeechMetadata(
-                            language=stt_entity.supported_languages[0],
+                            language=stt_language,
                             format=stt.AudioFormats.OGG,
                             codec=stt.AudioCodecs.OPUS,
                             bit_rate=stt.AudioBitRates.BITRATE_16,
