@@ -853,6 +853,13 @@ class TelegramChatHandler:
                         )[ATTR_FILE_PATH]  # type: ignore[index]
                     )
 
+                    @callback
+                    def cleanup_file_callback() -> None:
+                        """Cleanup temporary file."""
+                        self.hass.async_add_executor_job(file_path.unlink, True)
+
+                    session.async_on_cleanup(cleanup_file_callback)
+
                     mime_type = event.data.get(ATTR_FILE_MIME_TYPE, "")
                     if mime_type.startswith("text/"):
                         content = await self.hass.async_add_executor_job(
@@ -928,20 +935,9 @@ class TelegramChatHandler:
                                 ],
                             )
                         )
-
-                    def cleanup_file() -> None:
-                        """Cleanup temporary file."""
-                        file_path.unlink(missing_ok=True)
-
-                    @callback
-                    def cleanup_file_callback() -> None:
-                        """Cleanup temporary file."""
-                        self.hass.async_add_executor_job(cleanup_file)
-
-                    session.async_on_cleanup(cleanup_file_callback)
                 else:
                     input_text = event.data.get(ATTR_TEXT) or ""
-            except HomeAssistantError as err:
+            except Exception as err:
                 message = async_translate_message(
                     self.hass,
                     translation_key="conversation_error",
