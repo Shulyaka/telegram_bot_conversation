@@ -13,3 +13,4 @@ yamllint>=1.38.0
 zizmor>=1.24.1
 telegramify-markdown[mermaid]==1.1.2
 PyTurboJPEG>=2.2.0
+pyogg==0.6.14a1

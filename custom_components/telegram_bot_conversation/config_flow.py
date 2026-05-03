@@ -6,6 +6,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.components.ai_task import DOMAIN as AI_TASK_DOMAIN
+from homeassistant.components.stt import DOMAIN as STT_DOMAIN
 from homeassistant.components.telegram_bot.const import (
     DOMAIN as TELEGRAM_DOMAIN,
     SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
@@ -22,6 +23,7 @@ from .const import (
     CONF_CONVERSATION_TIMEOUT,
     CONF_LATEX,
     CONF_MERMAID,
+    CONF_STT,
     CONF_TELEGRAM_ENTRY,
     CONF_TELEGRAM_SUBENTRY,
     CONF_THOUGHTS,
@@ -262,6 +264,13 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                             supported_features=[
                                 "ai_task.AITaskEntityFeature.GENERATE_IMAGE"
                             ],
+                        )
+                    )
+                ),
+                vol.Optional(CONF_STT): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        filter=selector.EntityFilterSelectorConfig(
+                            domain=STT_DOMAIN,
                         )
                     )
                 ),
