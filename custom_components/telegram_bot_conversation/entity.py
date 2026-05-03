@@ -1,7 +1,7 @@
 """Per-chat handler for telegram_bot_conversation."""
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 import contextlib
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -11,9 +11,12 @@ import tempfile
 from types import TracebackType
 from typing import Any, Self
 
+import aiofiles
+import pyogg
 from telegramify_markdown import entities_to_markdownv2, markdownify, telegramify
 from telegramify_markdown.content import ContentType
 
+from homeassistant.components import stt
 from homeassistant.components.ai_task import async_generate_image
 from homeassistant.components.conversation import (
     AssistantContent,
@@ -91,7 +94,7 @@ from homeassistant.helpers.chat_session import (
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.intent import IntentResponseType
 from homeassistant.helpers.translation import async_get_cached_translations
-from homeassistant.util import dt as dt_util
+from homeassistant.util import dt as dt_util, language as language_util
 
 from .const import (
     CONF_AI_TASK,
@@ -100,6 +103,7 @@ from .const import (
     CONF_CONVERSATION_TIMEOUT,
     CONF_LATEX,
     CONF_MERMAID,
+    CONF_STT,
     CONF_TELEGRAM_ENTRY,
     CONF_THOUGHTS,
     CONF_TMPDIR,
@@ -831,58 +835,132 @@ class TelegramChatHandler:
                 chat_log_delta_listener=chat_log_delta_listener,
             ) as chat_log,
         ):
-            if event.data.get(ATTR_FILE_ID):
-                file_path = Path(
-                    (
-                        await self.hass.services.async_call(  # type: ignore[arg-type]
-                            TELEGRAM_DOMAIN,
-                            SERVICE_DOWNLOAD_FILE,
-                            {
-                                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                                ATTR_FILE_ID: event.data[ATTR_FILE_ID],
-                            },
-                            blocking=True,
-                            context=context,
-                            return_response=True,
-                        )
-                    )[ATTR_FILE_PATH]  # type: ignore[index]
-                )
-
-                mime_type = event.data.get(ATTR_FILE_MIME_TYPE, "")
-                if mime_type.startswith("text/"):
-                    content = await self.hass.async_add_executor_job(
-                        file_path.read_text
+            try:
+                if event.data.get(ATTR_FILE_ID):
+                    file_path = Path(
+                        (
+                            await self.hass.services.async_call(  # type: ignore[arg-type]
+                                TELEGRAM_DOMAIN,
+                                SERVICE_DOWNLOAD_FILE,
+                                {
+                                    CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                    ATTR_FILE_ID: event.data[ATTR_FILE_ID],
+                                },
+                                blocking=True,
+                                context=context,
+                                return_response=True,
+                            )
+                        )[ATTR_FILE_PATH]  # type: ignore[index]
                     )
-                    input_text = f"{file_path.name}:\n```{mime_type[5:].removeprefix('plain')}\n{content}\n```"
-                    if event.data.get(ATTR_TEXT):
-                        input_text += f"\n\n{event.data.get(ATTR_TEXT)}"
+
+                    @callback
+                    def cleanup_file_callback() -> None:
+                        """Cleanup temporary file."""
+                        self.hass.async_add_executor_job(file_path.unlink, True)
+
+                    session.async_on_cleanup(cleanup_file_callback)
+
+                    mime_type = event.data.get(ATTR_FILE_MIME_TYPE, "")
+                    if mime_type.startswith("text/"):
+                        content = await self.hass.async_add_executor_job(
+                            file_path.read_text
+                        )
+                        input_text = f"{file_path.name}:\n```{mime_type[5:].removeprefix('plain')}\n{content}\n```"
+                        if event.data.get(ATTR_TEXT):
+                            input_text += f"\n\n{event.data.get(ATTR_TEXT)}"
+                    elif mime_type == "audio/ogg":
+                        stt_entity_id = self.config.get(CONF_STT)
+                        if not stt_entity_id:
+                            stt_entity_id = stt.async_default_engine(self.hass)
+                        if stt_entity_id:
+                            stt_entity = stt.async_get_speech_to_text_entity(
+                                self.hass, stt_entity_id
+                            )
+                        else:
+                            stt_entity = None
+                        if not stt_entity:
+                            raise HomeAssistantError(  # noqa: TRY301
+                                f"STT engine {stt_entity_id} is not available"
+                            )
+
+                        opus_file = await self.hass.async_add_executor_job(
+                            pyogg.OpusFileStream, file_path.as_posix()
+                        )
+
+                        try:
+                            stt_language = language_util.matches(
+                                self.hass.config.language,
+                                stt_entity.supported_languages,
+                                country=self.hass.config.country,
+                            )[0]
+                        except KeyError:
+                            raise HomeAssistantError(
+                                f"STT entity {stt_entity.entity_id} does not support the language: {self.hass.config.language}"
+                            ) from None
+
+                        metadata = stt.SpeechMetadata(
+                            language=stt_language,
+                            format=stt.AudioFormats.OGG,
+                            codec=stt.AudioCodecs.OPUS,
+                            bit_rate=stt.AudioBitRates.BITRATE_16,
+                            sample_rate=stt.AudioSampleRates(opus_file.frequency),
+                            channel=stt.AudioChannels(opus_file.channels),
+                        )
+                        if not stt_entity.check_metadata(metadata):
+                            raise HomeAssistantError(  # noqa: TRY301
+                                f"STT entity {stt_entity.entity_id} does not support the audio format: {metadata}"
+                            )
+
+                        async def file_as_async_iter(
+                            path: str,
+                            chunk_size: int = 64 * 1024,
+                        ) -> AsyncIterator[bytes]:
+                            async with aiofiles.open(path, "rb") as f:
+                                while chunk := await f.read(chunk_size):
+                                    yield chunk
+
+                        stt_result = (
+                            await stt_entity.internal_async_process_audio_stream(
+                                metadata, file_as_async_iter(file_path.as_posix())
+                            )
+                        )
+                        if (
+                            stt_result.result == stt.SpeechResultState.ERROR
+                            or stt_result.text is None
+                        ):
+                            raise HomeAssistantError("STT error")  # noqa: TRY301
+
+                        input_text = stt_result.text
+                        if event.data.get(ATTR_TEXT):
+                            input_text += f"\n\n{event.data.get(ATTR_TEXT)}"
+                    else:
+                        input_text = event.data.get(ATTR_TEXT) or file_path.name
+                        chat_log.async_add_user_content(
+                            UserContent(
+                                input_text,  # Must be exactly same text as in async_converse
+                                attachments=[
+                                    Attachment(
+                                        media_content_id=f"media-source://{TELEGRAM_DOMAIN}/{event.data.get(ATTR_FILE_ID)}",
+                                        mime_type=mime_type,
+                                        path=file_path,
+                                    )
+                                ],
+                            )
+                        )
                 else:
-                    input_text = event.data.get(ATTR_TEXT) or file_path.name
-                    chat_log.async_add_user_content(
-                        UserContent(
-                            input_text,  # Must be exactly same text as in async_converse
-                            attachments=[
-                                Attachment(
-                                    media_content_id=f"media-source://{TELEGRAM_DOMAIN}/{event.data.get(ATTR_FILE_ID)}",
-                                    mime_type=mime_type,
-                                    path=file_path,
-                                )
-                            ],
-                        )
-                    )
-
-                def cleanup_file() -> None:
-                    """Cleanup temporary file."""
-                    file_path.unlink(missing_ok=True)
-
-                @callback
-                def cleanup_file_callback() -> None:
-                    """Cleanup temporary file."""
-                    self.hass.async_add_executor_job(cleanup_file)
-
-                session.async_on_cleanup(cleanup_file_callback)
-            else:
-                input_text = event.data.get(ATTR_TEXT) or ""
+                    input_text = event.data.get(ATTR_TEXT) or ""
+            except Exception as err:
+                message = async_translate_message(
+                    self.hass,
+                    translation_key="conversation_error",
+                    translation_placeholders={"error": str(err)},
+                )
+                await self.send_message(
+                    message=message,
+                    thread_id=thread_id,
+                    context=context,
+                )
+                raise
 
             try:
                 conversation_result = await async_converse(

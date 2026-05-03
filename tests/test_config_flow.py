@@ -9,6 +9,7 @@ from custom_components.telegram_bot_conversation.const import (
     CONF_CONVERSATION_TIMEOUT,
     CONF_LATEX,
     CONF_MERMAID,
+    CONF_STT,
     CONF_TELEGRAM_ENTRY,
     CONF_TELEGRAM_SUBENTRY,
     CONF_THOUGHTS,
@@ -114,6 +115,7 @@ async def test_subentry_reconfigure_flow(
             CONF_MERMAID: True,
             CONF_WEB_PREVIEW: "on",
             CONF_THOUGHTS: True,
+            CONF_STT: "stt.mock_engine",
         },
     )
 
@@ -134,3 +136,4 @@ async def test_subentry_reconfigure_flow(
     assert updated_subentry.data[CONF_MERMAID] is True
     assert updated_subentry.data[CONF_WEB_PREVIEW] == "on"
     assert updated_subentry.data[CONF_THOUGHTS] is True
+    assert updated_subentry.data[CONF_STT] == "stt.mock_engine"
