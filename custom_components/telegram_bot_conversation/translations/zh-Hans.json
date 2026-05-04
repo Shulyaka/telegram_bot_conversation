@@ -50,6 +50,7 @@
             "stt": "语音转文本",
             "telegram_subentry": "Telegram 聊天",
             "thoughts": "思考",
+            "tts": "文本转语音",
             "user_id": "Home Assistant 用户",
             "web_page_preview": "网页预览"
           },
@@ -63,6 +64,7 @@
             "stt": "用于转录 Telegram 语音消息的语音转文本实体。",
             "telegram_subentry": "要与此集成关联的 Telegram 子条目。",
             "thoughts": "在实际回复可用之前，将代理的思考作为临时消息显示。",
+            "tts": "用于在收到语音消息后将 Telegram 回复作为语音消息发送的文本转语音实体。",
             "user_id": "选择要与此 Telegram 聊天关联的 Home Assistant 用户。",
             "web_page_preview": "在消息中显示链接预览"
           },

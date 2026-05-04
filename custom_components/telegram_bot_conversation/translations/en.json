@@ -50,6 +50,7 @@
             "stt": "Speech-to-text",
             "telegram_subentry": "Telegram chat",
             "thoughts": "Thoughts",
+            "tts": "Text-to-speech",
             "user_id": "Home Assistant user",
             "web_page_preview": "Web page preview"
           },
@@ -63,6 +64,7 @@
             "stt": "Speech-to-text entity to transcribe Telegram voice messages.",
             "telegram_subentry": "Telegram subentry to link with this integration.",
             "thoughts": "Include the agent's thoughts as temporary messages before the actual response becomes available.",
+            "tts": "Text-to-speech entity to send Telegram messages as voice messages as responses to incoming voice messages.",
             "user_id": "Select a Home Assistant user to link with this Telegram chat.",
             "web_page_preview": "Show previews for links in the message"
           },

@@ -20,6 +20,7 @@ CONF_WEB_PREVIEW = "web_page_preview"
 CONF_THOUGHTS = "thoughts"
 CONF_AI_TASK = "ai_task"
 CONF_STT = "stt"
+CONF_TTS = "tts"
 
 
 class WebPreview(StrEnum):

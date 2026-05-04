@@ -16,7 +16,7 @@ import pyogg
 from telegramify_markdown import entities_to_markdownv2, markdownify, telegramify
 from telegramify_markdown.content import ContentType
 
-from homeassistant.components import stt
+from homeassistant.components import stt, tts
 from homeassistant.components.ai_task import async_generate_image
 from homeassistant.components.conversation import (
     AssistantContent,
@@ -64,9 +64,12 @@ from homeassistant.components.telegram_bot.const import (
     ATTR_REACTION,
     ATTR_TEXT,
     ATTR_TITLE,
+    ATTR_URL,
     ATTR_USER_ID,
+    CHAT_ACTION_RECORD_VOICE,
     CHAT_ACTION_TYPING,
     CHAT_ACTION_UPLOAD_PHOTO,
+    CHAT_ACTION_UPLOAD_VOICE,
     CONF_CONFIG_ENTRY_ID,
     DOMAIN as TELEGRAM_DOMAIN,
     EVENT_TELEGRAM_SENT,
@@ -80,6 +83,7 @@ from homeassistant.components.telegram_bot.const import (
     SERVICE_SEND_DOCUMENT,
     SERVICE_SEND_MESSAGE,
     SERVICE_SEND_PHOTO,
+    SERVICE_SEND_VOICE,
     SERVICE_SET_MESSAGE_REACTION,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -93,6 +97,7 @@ from homeassistant.helpers.chat_session import (
 )
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.intent import IntentResponseType
+from homeassistant.helpers.network import get_url
 from homeassistant.helpers.translation import async_get_cached_translations
 from homeassistant.util import dt as dt_util, language as language_util
 
@@ -107,6 +112,7 @@ from .const import (
     CONF_TELEGRAM_ENTRY,
     CONF_THOUGHTS,
     CONF_TMPDIR,
+    CONF_TTS,
     CONF_USER,
     CONF_WEB_PREVIEW,
     DOMAIN,
@@ -997,9 +1003,10 @@ class TelegramChatHandler:
                 )
             raise error
 
+        content = conversation_result.response.speech["plain"]["speech"]
         if (
             conversation_result.response.response_type == IntentResponseType.ERROR
-            and (content := conversation_result.response.speech["plain"]["speech"])
+            and content
             and not (
                 chat_log.content[-1].role == "assistant"
                 and chat_log.content[-1].content == content
@@ -1015,6 +1022,67 @@ class TelegramChatHandler:
                     }
                 },
                 context=context,
+            )
+
+        if (
+            event.data.get(ATTR_FILE_MIME_TYPE) == "audio/ogg"
+            and content
+            and self.config.get(CONF_TTS)
+        ):
+            await self.hass.services.async_call(
+                TELEGRAM_DOMAIN,
+                SERVICE_SEND_CHAT_ACTION,
+                {
+                    CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                    **get_telegram_service_target(
+                        self.chat_id,
+                        self.notify_entity_id,
+                    ),
+                    ATTR_MESSAGE_THREAD_ID: thread_id,
+                    ATTR_CHAT_ACTION: CHAT_ACTION_RECORD_VOICE,
+                },
+                context=context,
+            )
+
+            manager = self.hass.data[tts.const.DATA_TTS_MANAGER]
+            options = {
+                tts.ATTR_PREFERRED_FORMAT: "ogg",
+            }
+            stream = manager.async_create_result_stream(
+                engine=self.config[CONF_TTS],
+                use_file_cache=True,
+                options=options,
+            )
+            stream.async_set_message(content)
+            tts_url = get_url(self.hass, allow_external=False) + stream.url
+
+            await self.hass.services.async_call(
+                TELEGRAM_DOMAIN,
+                SERVICE_SEND_CHAT_ACTION,
+                {
+                    CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                    **get_telegram_service_target(self.chat_id, self.notify_entity_id),
+                    ATTR_MESSAGE_THREAD_ID: thread_id,
+                    ATTR_CHAT_ACTION: CHAT_ACTION_UPLOAD_VOICE,
+                },
+                context=context,
+            )
+
+            await self.hass.services.async_call(
+                TELEGRAM_DOMAIN,
+                SERVICE_SEND_VOICE,
+                {
+                    ATTR_URL: tts_url,
+                    **get_telegram_service_target(self.chat_id, self.notify_entity_id),
+                    ATTR_MESSAGE_THREAD_ID: thread_id,
+                    CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                    ATTR_PARSER: "markdownv2",
+                    ATTR_MESSAGE_TAG: DOMAIN,
+                    ATTR_DISABLE_NOTIF: True,
+                },
+                blocking=True,
+                context=context,
+                return_response=True,
             )
 
     async def async_chat_log_delta_listener(

@@ -50,6 +50,7 @@
             "stt": "Voz a texto",
             "telegram_subentry": "Chat de Telegram",
             "thoughts": "Pensamientos",
+            "tts": "Texto a voz",
             "user_id": "Usuario de Home Assistant",
             "web_page_preview": "Vista previa de páginas web"
           },
@@ -63,6 +64,7 @@
             "stt": "Entidad de voz a texto para transcribir mensajes de voz de Telegram.",
             "telegram_subentry": "Subentrada de Telegram que se vinculará con esta integración.",
             "thoughts": "Incluir los pensamientos del agente como mensajes temporales antes de que la respuesta real esté disponible.",
+            "tts": "Entidad de texto a voz para enviar respuestas de Telegram como mensajes de voz en respuesta a mensajes de voz entrantes.",
             "user_id": "Selecciona un usuario de Home Assistant para vincularlo con este chat de Telegram.",
             "web_page_preview": "Mostrar vistas previas de enlaces en el mensaje"
           },
