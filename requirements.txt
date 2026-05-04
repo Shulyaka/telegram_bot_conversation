@@ -15,3 +15,5 @@ telegramify-markdown[mermaid]==1.1.2
 PyTurboJPEG>=2.2.0
 pyogg==0.6.14a1
 aiofiles>=24.1.0
+mutagen>=1.47.0
+ha-ffmpeg>=3.2.2
