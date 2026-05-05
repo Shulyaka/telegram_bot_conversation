@@ -474,7 +474,7 @@ class TelegramChatHandler:
                             continue
 
                         text = re.sub(
-                            r"🖼(\[[^\]]*\]\(tg://time?)", "!\\1", text
+                            r"🖼(\[[^\]]*\]\(tg://time\?)", "!\\1", text
                         )  # Restore time links
                         disable_notification = draft or item is not items[-1]
                         disable_web_prev = (
