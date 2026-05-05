@@ -21,7 +21,7 @@ This is a Home Assistant custom integration that allows you to use the [Telegram
 - Easy switch between agents with `/model` command
 - Start a conversation from scratch with `/new` command
 - Full Markdown support
-- Voice messages as input
+- Voice messages as input both input and output
 - The responses are streamed while they are being generated (HA 2026.5+ is recommended for best experience)
 - You can see the summary of the agent's thoughts and even interrupt the response early
 - Code blocks can be sent as files, mermaid diagrams can be rendered into images, and LaTeX symbols can be translated into Unicode

@@ -1068,22 +1068,26 @@ class TelegramChatHandler:
                 context=context,
             )
 
-            await self.hass.services.async_call(
-                TELEGRAM_DOMAIN,
-                SERVICE_SEND_VOICE,
-                {
-                    ATTR_URL: tts_url,
-                    **get_telegram_service_target(self.chat_id, self.notify_entity_id),
-                    ATTR_MESSAGE_THREAD_ID: thread_id,
-                    CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                    ATTR_PARSER: "markdownv2",
-                    ATTR_MESSAGE_TAG: DOMAIN,
-                    ATTR_DISABLE_NOTIF: True,
-                },
-                blocking=True,
-                context=context,
-                return_response=True,
-            )
+            current_conversation = self.conversations[thread_id]
+            async with current_conversation.send_lock:
+                await self.hass.services.async_call(
+                    TELEGRAM_DOMAIN,
+                    SERVICE_SEND_VOICE,
+                    {
+                        ATTR_URL: tts_url,
+                        **get_telegram_service_target(
+                            self.chat_id, self.notify_entity_id
+                        ),
+                        ATTR_MESSAGE_THREAD_ID: thread_id,
+                        CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                        ATTR_PARSER: "markdownv2",
+                        ATTR_MESSAGE_TAG: DOMAIN,
+                        ATTR_DISABLE_NOTIF: True,
+                    },
+                    blocking=True,
+                    context=context,
+                    return_response=True,
+                )
 
     async def async_chat_log_delta_listener(
         self,
