@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 import itertools
 from pathlib import Path
+import re
 import tempfile
 from types import TracebackType
 from typing import Any, Self
@@ -293,6 +294,7 @@ class TelegramChatHandler:
                 "Mermaid is supported as inline code blocks "
                 "and will be rendered to an image. "
             )
+        self.extra_prompt += "Telegram date-time markdown entities are supported. "
         self.extra_prompt += (
             f"If the response message starts with any of {REACTION_EMOJI}, "
             "it will be added as a reaction to the user message."
@@ -471,6 +473,9 @@ class TelegramChatHandler:
                         else:
                             continue
 
+                        text = re.sub(
+                            r"🖼(\[[^\]]*\]\(tg://time?)", "!\\1", text
+                        )  # Restore time links
                         disable_notification = draft or item is not items[-1]
                         disable_web_prev = (
                             draft
@@ -804,6 +809,7 @@ class TelegramChatHandler:
         conversation_id = self._get_conversation_id(thread_id)
 
         error: BaseException | None = None
+        extra_system_prompt = self.extra_prompt
 
         @callback
         def chat_log_delta_listener(chat_log: ChatLog, delta: dict[str, Any]) -> None:
@@ -939,6 +945,7 @@ class TelegramChatHandler:
                         input_text = stt_result.text
                         if event.data.get(ATTR_TEXT):
                             input_text += f"\n\n{event.data.get(ATTR_TEXT)}"
+                        extra_system_prompt += "\nThe user has sent a voice message that has been transcribed."
                     else:
                         input_text = event.data.get(ATTR_TEXT) or file_path.name
                         chat_log.async_add_user_content(
@@ -975,7 +982,7 @@ class TelegramChatHandler:
                     conversation_id=session.conversation_id,
                     context=context,
                     agent_id=self.agent_id,
-                    extra_system_prompt=self.extra_prompt,
+                    extra_system_prompt=extra_system_prompt,
                 )
             except (Exception, asyncio.CancelledError) as e:  # noqa: BLE001
                 error = e
