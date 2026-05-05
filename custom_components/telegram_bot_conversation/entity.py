@@ -48,6 +48,7 @@ from homeassistant.components.telegram_bot.const import (
     ATTR_CHAT_ID,
     ATTR_DISABLE_NOTIF,
     ATTR_DISABLE_WEB_PREV,
+    ATTR_DRAFT_ID,
     ATTR_FILE,
     ATTR_FILE_ID,
     ATTR_FILE_MIME_TYPE,
@@ -83,6 +84,7 @@ from homeassistant.components.telegram_bot.const import (
     SERVICE_SEND_CHAT_ACTION,
     SERVICE_SEND_DOCUMENT,
     SERVICE_SEND_MESSAGE,
+    SERVICE_SEND_MESSAGE_DRAFT,
     SERVICE_SEND_PHOTO,
     SERVICE_SEND_VOICE,
     SERVICE_SET_MESSAGE_REACTION,
@@ -121,14 +123,6 @@ from .const import (
     REACTION_EMOJI,
     WebPreview,
 )
-
-try:
-    from homeassistant.components.telegram_bot.const import (  # type: ignore[attr-defined]
-        ATTR_DRAFT_ID,
-        SERVICE_SEND_MESSAGE_DRAFT,
-    )
-except ImportError:
-    SERVICE_SEND_MESSAGE_DRAFT = ATTR_DRAFT_ID = None
 
 MAX_TELEGRAM_LENGTH = 4096
 
@@ -421,7 +415,6 @@ class TelegramChatHandler:
                 if (
                     not draft
                     and current_conversation.sent_drafts is not None
-                    and SERVICE_SEND_MESSAGE_DRAFT
                     and self.chat_id > 0
                 ):
                     thinking_message = async_translate_message(
@@ -453,11 +446,7 @@ class TelegramChatHandler:
                     self.hass, self.telegram_entry_id
                 ) as watcher:
                     # All messages but the last are real messages
-                    for item in (
-                        items[:-1]
-                        if draft and SERVICE_SEND_MESSAGE_DRAFT and self.chat_id > 0
-                        else items
-                    ):
+                    for item in items[:-1] if draft and self.chat_id > 0 else items:
                         if item.content_type == ContentType.TEXT:
                             text = entities_to_markdownv2(item.text, item.entities)
                         elif item.content_type == ContentType.PHOTO:
@@ -689,7 +678,7 @@ class TelegramChatHandler:
 
                     current_conversation.sent_drafts.pop(message_id, None)
 
-                if draft and SERVICE_SEND_MESSAGE_DRAFT and self.chat_id > 0 and items:
+                if draft and self.chat_id > 0 and items:
                     item = items[-1]
                     text = entities_to_markdownv2(item.text, item.entities)
 
