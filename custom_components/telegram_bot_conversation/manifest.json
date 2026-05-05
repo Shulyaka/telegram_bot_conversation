@@ -1,6 +1,7 @@
 {
   "domain": "telegram_bot_conversation",
   "name": "Telegram Bot <> Conversation",
+  "after_dependencies": ["tts"],
   "codeowners": ["@Shulyaka"],
   "config_flow": true,
   "dependencies": ["conversation", "telegram_bot"],

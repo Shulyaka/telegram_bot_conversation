@@ -11,6 +11,7 @@ from homeassistant.components.telegram_bot.const import (
     DOMAIN as TELEGRAM_DOMAIN,
     SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
 )
+from homeassistant.components.tts.const import DOMAIN as TTS_DOMAIN
 from homeassistant.config_entries import ConfigSubentry, ConfigSubentryData
 from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv, selector
@@ -28,6 +29,7 @@ from .const import (
     CONF_TELEGRAM_SUBENTRY,
     CONF_THOUGHTS,
     CONF_TMPDIR,
+    CONF_TTS,
     CONF_USER,
     CONF_WEB_PREVIEW,
     DOMAIN,
@@ -271,6 +273,13 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                     selector.EntitySelectorConfig(
                         filter=selector.EntityFilterSelectorConfig(
                             domain=STT_DOMAIN,
+                        )
+                    )
+                ),
+                vol.Optional(CONF_TTS): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        filter=selector.EntityFilterSelectorConfig(
+                            domain=TTS_DOMAIN,
                         )
                     )
                 ),

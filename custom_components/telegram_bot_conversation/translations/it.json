@@ -50,6 +50,7 @@
             "stt": "Riconoscimento vocale",
             "telegram_subentry": "Chat Telegram",
             "thoughts": "Pensieri",
+            "tts": "Sintesi vocale",
             "user_id": "Utente Home Assistant",
             "web_page_preview": "Anteprima pagina web"
           },
@@ -63,6 +64,7 @@
             "stt": "Entità di riconoscimento vocale per trascrivere i messaggi vocali di Telegram.",
             "telegram_subentry": "Sotto-voce Telegram da collegare a questa integrazione.",
             "thoughts": "Includi i pensieri dell'agente come messaggi temporanei prima che la risposta effettiva sia disponibile.",
+            "tts": "Entità di sintesi vocale per inviare le risposte di Telegram come messaggi vocali in risposta ai messaggi vocali in arrivo.",
             "user_id": "Seleziona un utente Home Assistant da collegare a questa chat Telegram.",
             "web_page_preview": "Mostra le anteprime dei link nel messaggio"
           },
