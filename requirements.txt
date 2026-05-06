@@ -2,7 +2,7 @@ colorlog>=6.10.1
 hassil>=3.5.0
 home_assistant_intents>=2026.3.24
 pytest-homeassistant-custom-component>=0.13.317
-python-telegram-bot[socks]==22.1
+python-telegram-bot[socks]>=22.1
 python-typing-update>=0.8.1
 pip>=26.1
 pre-commit>=4.6.0
@@ -12,7 +12,7 @@ ruff>=0.15.12
 yamllint>=1.38.0
 zizmor>=1.24.1
 telegramify-markdown[mermaid]==1.1.4
-PyTurboJPEG>=2.2.0
+PyTurboJPEG>=1.8.0
 pyogg==0.6.14a1
 aiofiles>=24.1.0
 mutagen>=1.47.0

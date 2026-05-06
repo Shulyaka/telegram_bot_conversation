@@ -46,6 +46,9 @@ jobs:
       - name: Install requirements
         run: scripts/bootstrap
 
+      - name: Check requirements sync
+        run: scripts/run-in-env.sh scripts/check-requirements-sync
+
       - name: Run prek
         uses: j178/prek-action@6ad80277337ad479fe43bd70701c3f7f8aa74db3 # v2.0.3
         env:

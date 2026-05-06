@@ -1,0 +1,435 @@
+#!/usr/bin/env python3
+# ruff: noqa: D101,D102,D103,T201
+"""Keep integration requirements aligned with manifest and Home Assistant."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+from pathlib import Path
+import re
+import sys
+import tempfile
+import tomllib
+import urllib.error
+import urllib.request
+
+from packaging.requirements import InvalidRequirement, Requirement
+from packaging.utils import canonicalize_name
+from packaging.version import Version
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+REQUIREMENTS = REPO_ROOT / "requirements.txt"
+MANIFEST = REPO_ROOT / "custom_components/telegram_bot_conversation/manifest.json"
+HACS = REPO_ROOT / "hacs.json"
+DEPENDABOT = REPO_ROOT / ".github/dependabot.yml"
+PYPROJECT = REPO_ROOT / "pyproject.toml"
+
+HA_REQUIREMENTS_ALL = "https://raw.githubusercontent.com/home-assistant/core/{version}/requirements_all.txt"
+
+
+@dataclass(slots=True)
+class RequirementLine:
+    line_no: int
+    raw: str
+    requirement: Requirement
+
+    @property
+    def base_key(self) -> str:
+        return normalize_name(self.requirement.name)
+
+    @property
+    def full_key(self) -> str:
+        return full_key(self.requirement)
+
+
+def normalize_name(name: str) -> str:
+    return canonicalize_name(name).lower()
+
+
+def full_key(requirement: Requirement) -> str:
+    extras = ",".join(sorted(requirement.extras))
+    name = normalize_name(requirement.name)
+    return f"{name}[{extras}]" if extras else name
+
+
+def parse_requirement(raw: str) -> Requirement | None:
+    text = raw.strip()
+    if not text or text.startswith(("#", "-", ".")):
+        return None
+
+    try:
+        return Requirement(text)
+    except InvalidRequirement:
+        return None
+
+
+def load_requirements(path: Path) -> tuple[list[str], list[RequirementLine]]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    requirements = []
+
+    for line_no, raw in enumerate(lines):
+        if requirement := parse_requirement(raw):
+            requirements.append(RequirementLine(line_no, raw, requirement))
+
+    return lines, requirements
+
+
+def load_manifest_requirements() -> list[str]:
+    return json.loads(MANIFEST.read_text(encoding="utf-8")).get("requirements", [])
+
+
+def load_manifest() -> dict[str, object]:
+    return json.loads(MANIFEST.read_text(encoding="utf-8"))
+
+
+def project_version() -> str:
+    return tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]["version"]
+
+
+def update_manifest_requirement(requirement_name: str, updated: str) -> None:
+    manifest_requirements = load_manifest_requirements()
+    current = next(
+        (
+            raw
+            for raw in manifest_requirements
+            if parse_requirement(raw)
+            and normalize_name(Requirement(raw).name)
+            == normalize_name(requirement_name)
+        ),
+        None,
+    )
+    if current is None or current == updated:
+        return
+
+    manifest_text = MANIFEST.read_text(encoding="utf-8")
+    MANIFEST.write_text(
+        manifest_text.replace(f'"{current}"', f'"{updated}"'), encoding="utf-8"
+    )
+    print(
+        "Updating "
+        f"{current} -> {updated} "
+        f"from Home Assistant in {MANIFEST.relative_to(REPO_ROOT)}"
+    )
+
+
+def update_manifest_version(version: str) -> None:
+    manifest = load_manifest()
+    current = str(manifest["version"])
+    if current == version:
+        return
+
+    manifest_text = MANIFEST.read_text(encoding="utf-8")
+    MANIFEST.write_text(
+        re.sub(
+            r'("version"\s*:\s*")([^"]+)(")',
+            rf"\g<1>{version}\g<3>",
+            manifest_text,
+            count=1,
+        ),
+        encoding="utf-8",
+    )
+    print(f"Updating {MANIFEST.relative_to(REPO_ROOT)} version {current} -> {version}")
+
+
+def update_pyproject_version(version: str) -> None:
+    current = project_version()
+    if current == version:
+        return
+
+    pyproject_text = PYPROJECT.read_text(encoding="utf-8")
+    PYPROJECT.write_text(
+        re.sub(
+            r'(^version\s*=\s*")([^"]+)(")',
+            rf"\g<1>{version}\g<3>",
+            pyproject_text,
+            count=1,
+            flags=re.MULTILINE,
+        ),
+        encoding="utf-8",
+    )
+    print(f"Updating {PYPROJECT.relative_to(REPO_ROOT)} version {current} -> {version}")
+
+
+def sync_component_versions() -> None:
+    manifest_version = str(load_manifest()["version"])
+    pyproject_version = project_version()
+
+    if Version(manifest_version) == Version(pyproject_version):
+        return
+
+    higher_version = str(max(Version(manifest_version), Version(pyproject_version)))
+    if Version(manifest_version) < Version(pyproject_version):
+        update_manifest_version(higher_version)
+    else:
+        update_pyproject_version(higher_version)
+
+
+def requirement_map(
+    requirements: list[RequirementLine],
+) -> tuple[dict[str, RequirementLine], dict[str, RequirementLine]]:
+    by_full_key = {}
+    by_base_key = {}
+
+    for line in requirements:
+        by_full_key.setdefault(line.full_key, line)
+        by_base_key.setdefault(line.base_key, line)
+
+    return by_full_key, by_base_key
+
+
+def sync_manifest_requirements(
+    lines: list[str], requirements: list[RequirementLine]
+) -> list[str]:
+    by_full_key, _ = requirement_map(requirements)
+
+    manifest_requirements = load_manifest_requirements()
+    for manifest_requirement in manifest_requirements:
+        requirement = Requirement(manifest_requirement)
+        existing = by_full_key.get(full_key(requirement))
+        if existing is None:
+            print(
+                f"Adding {manifest_requirement} from {MANIFEST.relative_to(REPO_ROOT)}"
+            )
+            lines.append(manifest_requirement)
+            by_full_key[full_key(requirement)] = RequirementLine(
+                len(lines) - 1, manifest_requirement, requirement
+            )
+            continue
+
+        if existing.raw != manifest_requirement:
+            print(
+                "Updating "
+                f"{existing.raw} -> {manifest_requirement} "
+                f"from {MANIFEST.relative_to(REPO_ROOT)}"
+            )
+            lines[existing.line_no] = manifest_requirement
+            by_full_key[full_key(requirement)] = RequirementLine(
+                existing.line_no, manifest_requirement, requirement
+            )
+
+    return lines
+
+
+def dependabot_pip_ignored_dependencies() -> list[str]:
+    """Parse ignored pip dependency names from the project's Dependabot config."""
+
+    ignored = []
+    in_pip_update = False
+    in_ignore = False
+    update_indent = 0
+    ignore_indent = 0
+
+    for raw in DEPENDABOT.read_text(encoding="utf-8").splitlines():
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+
+        indent = len(line) - len(line.lstrip())
+        stripped = line.strip()
+
+        if stripped.startswith("- package-ecosystem:"):
+            update_indent = indent
+            in_pip_update = (
+                '"pip"' in stripped or "'pip'" in stripped or stripped.endswith(": pip")
+            )
+            in_ignore = False
+            continue
+
+        if in_pip_update and indent <= update_indent and stripped.startswith("- "):
+            in_pip_update = False
+            in_ignore = False
+
+        if not in_pip_update:
+            continue
+
+        if stripped == "ignore:":
+            in_ignore = True
+            ignore_indent = indent
+            continue
+
+        if in_ignore and indent <= ignore_indent and not stripped.startswith("- "):
+            in_ignore = False
+            continue
+
+        if in_ignore and (
+            match := re.search(r'dependency-name:\s*["\']?([^"\']+)', stripped)
+        ):
+            ignored.append(match.group(1).strip())
+
+    return ignored
+
+
+def download_ha_requirements_all(homeassistant_version: str, temp_dir: Path) -> Path:
+    url = HA_REQUIREMENTS_ALL.format(version=homeassistant_version)
+    destination = temp_dir / "requirements_all.txt"
+
+    try:
+        with urllib.request.urlopen(url, timeout=30) as response:
+            destination.write_bytes(response.read())
+    except urllib.error.URLError as err:
+        raise RuntimeError(f"Failed to download {url}: {err}") from err
+
+    return destination
+
+
+def pinned_equal_version(requirement: Requirement) -> Version | None:
+    versions = [
+        Version(spec.version)
+        for spec in requirement.specifier
+        if spec.operator == "==" and not spec.version.endswith(".*")
+    ]
+    return versions[0] if len(versions) == 1 else None
+
+
+def requirement_with_minimum(current: RequirementLine, minimum: Version) -> str:
+    extras = (
+        f"[{','.join(sorted(current.requirement.extras))}]"
+        if current.requirement.extras
+        else ""
+    )
+    marker = f"; {current.requirement.marker}" if current.requirement.marker else ""
+    return f"{current.requirement.name}{extras}>={minimum}{marker}"
+
+
+def requirement_name_with_extras(name: str, extras: set[str]) -> str:
+    formatted_extras = f"[{','.join(sorted(extras))}]" if extras else ""
+    return f"{name}{formatted_extras}"
+
+
+def sync_homeassistant_ignored_requirements(
+    lines: list[str], requirements: list[RequirementLine]
+) -> list[str]:
+    homeassistant_version = json.loads(HACS.read_text(encoding="utf-8"))[
+        "homeassistant"
+    ]
+    with tempfile.TemporaryDirectory(prefix="ha-requirements-") as temp_dir:
+        ha_requirements_path = download_ha_requirements_all(
+            homeassistant_version, Path(temp_dir)
+        )
+        _, ha_requirements = load_requirements(ha_requirements_path)
+
+    _, ha_by_base_key = requirement_map(ha_requirements)
+    by_full_key, by_base_key = requirement_map(requirements)
+
+    for ignored in dependabot_pip_ignored_dependencies():
+        ignored_requirement = Requirement(ignored)
+        ha_requirement = ha_by_base_key.get(normalize_name(ignored_requirement.name))
+        if ha_requirement is None:
+            continue
+
+        ha_version = pinned_equal_version(ha_requirement.requirement)
+        if ha_version is None:
+            continue
+
+        ignored_key = full_key(ignored_requirement)
+        current = by_full_key.get(ignored_key) or by_base_key.get(
+            normalize_name(ignored_requirement.name)
+        )
+        if current is not None:
+            desired = requirement_with_minimum(current, ha_version)
+        else:
+            desired_name = requirement_name_with_extras(
+                ignored_requirement.name, ignored_requirement.extras
+            )
+            desired = f"{desired_name}>={ha_version}"
+
+        update_manifest_requirement(ignored_requirement.name, desired)
+
+        if current is None:
+            print(f"Adding {desired} from Home Assistant {homeassistant_version}")
+            lines.append(desired)
+            requirement = Requirement(lines[-1])
+            new_line = RequirementLine(len(lines) - 1, lines[-1], requirement)
+            by_full_key[new_line.full_key] = new_line
+            by_base_key[new_line.base_key] = new_line
+            continue
+
+        if current.raw == desired:
+            continue
+
+        print(
+            "Updating "
+            f"{current.raw} -> {desired} "
+            f"from Home Assistant {homeassistant_version}"
+        )
+        lines[current.line_no] = desired
+        new_line = RequirementLine(current.line_no, desired, Requirement(desired))
+        by_full_key[new_line.full_key] = new_line
+        by_base_key[new_line.base_key] = new_line
+
+    return lines
+
+
+def should_run(path: Path, selected: set[Path]) -> bool:
+    return path in selected or not selected
+
+
+def main() -> int:
+    selected = {
+        (REPO_ROOT / arg).resolve()
+        for arg in sys.argv[1:]
+        if (REPO_ROOT / arg).resolve()
+        in {
+            REQUIREMENTS.resolve(),
+            MANIFEST.resolve(),
+            HACS.resolve(),
+            DEPENDABOT.resolve(),
+            PYPROJECT.resolve(),
+        }
+    }
+
+    if sys.argv[1:] and not selected:
+        return 0
+
+    original = {
+        path: path.read_text(encoding="utf-8")
+        for path in (REQUIREMENTS, MANIFEST, PYPROJECT)
+    }
+    lines, requirements = load_requirements(REQUIREMENTS)
+
+    if should_run(MANIFEST.resolve(), selected) or should_run(
+        PYPROJECT.resolve(), selected
+    ):
+        sync_component_versions()
+
+    if any(
+        should_run(path.resolve(), selected)
+        for path in (REQUIREMENTS, MANIFEST, HACS, DEPENDABOT)
+    ):
+        lines = sync_homeassistant_ignored_requirements(lines, requirements)
+        requirements = list(load_requirements_from_lines(lines))
+
+    if should_run(REQUIREMENTS.resolve(), selected) or should_run(
+        MANIFEST.resolve(), selected
+    ):
+        lines = sync_manifest_requirements(lines, requirements)
+
+    updated = "\n".join(lines) + "\n"
+    REQUIREMENTS.write_text(updated, encoding="utf-8")
+
+    changed = [
+        path.relative_to(REPO_ROOT)
+        for path, original_text in original.items()
+        if path.read_text(encoding="utf-8") != original_text
+    ]
+    if not changed:
+        print("requirements and versions are in sync")
+        return 0
+
+    print(
+        f"Updated {', '.join(str(path) for path in changed)}; review and stage the changes."
+    )
+    return 1
+
+
+def load_requirements_from_lines(lines: list[str]) -> list[RequirementLine]:
+    requirements = []
+    for line_no, raw in enumerate(lines):
+        if requirement := parse_requirement(raw):
+            requirements.append(RequirementLine(line_no, raw, requirement))
+    return requirements
+
+
+if __name__ == "__main__":
+    sys.exit(main())
