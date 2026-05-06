@@ -75,6 +75,27 @@ def load_requirements(path: Path) -> tuple[list[str], list[RequirementLine]]:
     return lines, requirements
 
 
+def split_inline_comment(raw: str) -> tuple[str, str]:
+    requirement, separator, comment = raw.partition(" #")
+    return requirement.rstrip(), f"{separator}{comment}" if separator else ""
+
+
+def split_marker(raw: str) -> tuple[str, str]:
+    requirement, separator, marker = raw.partition(";")
+    return requirement.strip(), f"{separator} {marker.strip()}" if separator else ""
+
+
+def merge_requirement_line(existing: str, desired: str) -> str:
+    desired_without_comment, desired_comment = split_inline_comment(desired)
+    existing_without_comment, existing_comment = split_inline_comment(existing)
+    desired_requirement, desired_marker = split_marker(desired_without_comment)
+    _, existing_marker = split_marker(existing_without_comment)
+
+    marker = desired_marker or existing_marker
+    comment = desired_comment or existing_comment
+    return f"{desired_requirement}{marker}{comment}"
+
+
 def load_manifest_requirements() -> list[str]:
     return json.loads(MANIFEST.read_text(encoding="utf-8")).get("requirements", [])
 
@@ -197,15 +218,16 @@ def sync_manifest_requirements(
             )
             continue
 
-        if existing.raw != manifest_requirement:
+        merged_requirement = merge_requirement_line(existing.raw, manifest_requirement)
+        if existing.raw != merged_requirement:
             print(
                 "Updating "
-                f"{existing.raw} -> {manifest_requirement} "
+                f"{existing.raw} -> {merged_requirement} "
                 f"from {MANIFEST.relative_to(REPO_ROOT)}"
             )
-            lines[existing.line_no] = manifest_requirement
+            lines[existing.line_no] = merged_requirement
             by_full_key[full_key(requirement)] = RequirementLine(
-                existing.line_no, manifest_requirement, requirement
+                existing.line_no, merged_requirement, Requirement(merged_requirement)
             )
 
     return lines
@@ -262,7 +284,8 @@ def dependabot_pip_ignored_dependencies() -> list[str]:
 
 def download_ha_requirements_all(homeassistant_version: str, temp_dir: Path) -> Path:
     url = HA_REQUIREMENTS_ALL.format(version=homeassistant_version)
-    destination = temp_dir / "requirements_all.txt"
+    safe_version = re.sub(r"[^A-Za-z0-9_.-]", "_", homeassistant_version)
+    destination = temp_dir / f"requirements_all-{safe_version}.txt"
 
     try:
         with urllib.request.urlopen(url, timeout=30) as response:
@@ -282,19 +305,31 @@ def pinned_equal_version(requirement: Requirement) -> Version | None:
     return versions[0] if len(versions) == 1 else None
 
 
-def requirement_with_minimum(current: RequirementLine, minimum: Version) -> str:
-    extras = (
-        f"[{','.join(sorted(current.requirement.extras))}]"
-        if current.requirement.extras
-        else ""
-    )
-    marker = f"; {current.requirement.marker}" if current.requirement.marker else ""
-    return f"{current.requirement.name}{extras}>={minimum}{marker}"
-
-
 def requirement_name_with_extras(name: str, extras: set[str]) -> str:
     formatted_extras = f"[{','.join(sorted(extras))}]" if extras else ""
     return f"{name}{formatted_extras}"
+
+
+def requirement_bounds(lower: Version, upper: Version | None) -> str:
+    if upper is None:
+        return f">={lower}"
+
+    if lower == upper:
+        return f"=={lower}"
+
+    if lower > upper:
+        return f"=={upper}"
+
+    return f">={lower},<={upper}"
+
+
+def requirement_with_bounds(
+    name: str,
+    extras: set[str],
+    lower: Version,
+    upper: Version | None,
+) -> str:
+    return f"{requirement_name_with_extras(name, extras)}{requirement_bounds(lower, upper)}"
 
 
 def sync_homeassistant_ignored_requirements(
@@ -307,9 +342,12 @@ def sync_homeassistant_ignored_requirements(
         ha_requirements_path = download_ha_requirements_all(
             homeassistant_version, Path(temp_dir)
         )
+        ha_dev_requirements_path = download_ha_requirements_all("dev", Path(temp_dir))
         _, ha_requirements = load_requirements(ha_requirements_path)
+        _, ha_dev_requirements = load_requirements(ha_dev_requirements_path)
 
     _, ha_by_base_key = requirement_map(ha_requirements)
+    _, ha_dev_by_base_key = requirement_map(ha_dev_requirements)
     by_full_key, by_base_key = requirement_map(requirements)
 
     for ignored in dependabot_pip_ignored_dependencies():
@@ -322,17 +360,32 @@ def sync_homeassistant_ignored_requirements(
         if ha_version is None:
             continue
 
+        ha_dev_version = None
+        ha_dev_requirement = ha_dev_by_base_key.get(
+            normalize_name(ignored_requirement.name)
+        )
+        if ha_dev_requirement is not None:
+            ha_dev_version = pinned_equal_version(ha_dev_requirement.requirement)
+
         ignored_key = full_key(ignored_requirement)
         current = by_full_key.get(ignored_key) or by_base_key.get(
             normalize_name(ignored_requirement.name)
         )
         if current is not None:
-            desired = requirement_with_minimum(current, ha_version)
-        else:
-            desired_name = requirement_name_with_extras(
-                ignored_requirement.name, ignored_requirement.extras
+            desired = requirement_with_bounds(
+                current.requirement.name,
+                current.requirement.extras,
+                ha_version,
+                ha_dev_version,
             )
-            desired = f"{desired_name}>={ha_version}"
+            desired = merge_requirement_line(current.raw, desired)
+        else:
+            desired = requirement_with_bounds(
+                ignored_requirement.name,
+                ignored_requirement.extras,
+                ha_version,
+                ha_dev_version,
+            )
 
         update_manifest_requirement(ignored_requirement.name, desired)
 
