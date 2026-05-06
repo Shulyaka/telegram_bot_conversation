@@ -55,8 +55,8 @@ curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_all.txt" -o $tmpdir/requiremen
 if [ "$1" = "--full" ]; then
   HA_INSTALL_ARG="$HA_INSTALL_ARG --requirement $tmpdir/requirements_test_all.txt"
 else
-  sed -e 's/^-r /#-r /' -i $tmpdir/requirements_test_all.txt
-  HA_INSTALL_ARG="$HA_INSTALL_ARG --constraint $tmpdir/requirements_test_all.txt"
+  sed -e 's/^-r /#-r /' $tmpdir/requirements_test_all.txt > $tmpdir/constraints_test_all.txt
+  HA_INSTALL_ARG="$HA_INSTALL_ARG --constraint $tmpdir/constraints_test_all.txt"
 fi
 
 case "$HA_VERSION" in
