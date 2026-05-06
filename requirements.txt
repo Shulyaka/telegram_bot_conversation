@@ -1,6 +1,6 @@
 colorlog==6.10.1
 hassil==3.5.0
-home_assistant_intents>=2026.3.24
+home-assistant-intents>=2026.3.3,<=2026.5.5
 pytest-homeassistant-custom-component>=0.13.317
 python-telegram-bot[socks]>=22.1,<=22.7
 python-typing-update>=0.7.2

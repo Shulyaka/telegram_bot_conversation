@@ -43,5 +43,6 @@ updates:
       - dependency-name: "PyTurboJPEG"
       - dependency-name: "mutagen"
       - dependency-name: "ha-ffmpeg"
+      - dependency-name: "home-assistant-intents"
     cooldown:
       default-days: 7
