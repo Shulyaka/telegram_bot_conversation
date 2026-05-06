@@ -14,6 +14,6 @@ zizmor>=1.24.1
 telegramify-markdown[mermaid]==1.1.4
 PyTurboJPEG>=2.2.0
 pyogg==0.6.14a1
-aiofiles>=25.1.0
+aiofiles>=24.1.0
 mutagen>=1.47.0
 ha-ffmpeg>=3.2.2
