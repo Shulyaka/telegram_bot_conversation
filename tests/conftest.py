@@ -149,6 +149,7 @@ def mock_telegram_external_calls() -> Generator[None]:
         patch.object(BotMock, "get_me", return_value=test_user),
         patch.object(BotMock, "bot", test_user),
         patch.object(BotMock, "send_message", return_value=message),
+        patch.object(BotMock, "send_message_draft", return_value=message),
         patch.object(BotMock, "send_photo", return_value=message),
         patch.object(BotMock, "send_media_group", side_effect=mock_send_media_group),
         patch.object(BotMock, "send_sticker", return_value=message),
