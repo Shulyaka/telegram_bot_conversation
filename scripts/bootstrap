@@ -42,33 +42,36 @@ fi
 tmpdir=$(mktemp -d)
 trap "rm -rf $tmpdir" EXIT
 
+echo "Fetching Home Assistant dependencies for version ${HA_VERSION}..."
+
+HA_CORE_BASE_URL="https://raw.githubusercontent.com/home-assistant/core/${HA_VERSION}"
+mkdir -p $tmpdir/homeassistant
+curl -fsSL "${HA_CORE_BASE_URL}/homeassistant/package_constraints.txt" -o $tmpdir/homeassistant/package_constraints.txt  # constraints for requirements files
+curl -fsSL "${HA_CORE_BASE_URL}/requirements.txt" -o $tmpdir/requirements.txt  # required by requirements_all.txt
+curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_pre_commit.txt" -o $tmpdir/requirements_test_pre_commit.txt  # required by requirements_test.txt
+curl -fsSL "${HA_CORE_BASE_URL}/requirements_test.txt" -o $tmpdir/requirements_test.txt  # required by requirements_test_all.txt
+curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_all.txt" -o $tmpdir/requirements_test_all.txt
+
 if [ "$1" = "--full" ]; then
-  echo "Fetching Home Assistant dependencies for version ${HA_VERSION}..."
-
-  HA_CORE_BASE_URL="https://raw.githubusercontent.com/home-assistant/core/${HA_VERSION}"
-  mkdir -p $tmpdir/homeassistant
-  curl -fsSL "${HA_CORE_BASE_URL}/homeassistant/package_constraints.txt" -o $tmpdir/homeassistant/package_constraints.txt  # constraints for requirements files
-  curl -fsSL "${HA_CORE_BASE_URL}/requirements.txt" -o $tmpdir/requirements.txt  # required by requirements_all.txt
-  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_pre_commit.txt" -o $tmpdir/requirements_test_pre_commit.txt  # required by requirements_test.txt
-  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test.txt" -o $tmpdir/requirements_test.txt  # required by requirements_test_all.txt
-  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_all.txt" -o $tmpdir/requirements_test_all.txt
-
-  PIPARGS="$PIPARGS --requirement $tmpdir/requirements_test_all.txt"
+  HA_INSTALL_ARG="$HA_INSTALL_ARG --requirement $tmpdir/requirements_test_all.txt"
+else
+  sed -e 's/^-r /#-r /' $tmpdir/requirements_test_all.txt > $tmpdir/constraints_test_all.txt
+  HA_INSTALL_ARG="$HA_INSTALL_ARG --constraint $tmpdir/constraints_test_all.txt"
 fi
 
 case "$HA_VERSION" in
     # prerelease: contains a/b/rc suffix
     *[0-9]a[0-9]*|*[0-9]b[0-9]*|*[0-9]rc[0-9]*)
         PIPARGS="$PIPARGS --pre"
-        HA_INSTALL_ARG="homeassistant==${HA_VERSION}"
+        HA_INSTALL_ARG="$HA_INSTALL_ARG homeassistant==${HA_VERSION}"
         ;;
     # git ref: contains characters other than digits and dots
     *[!0-9.]*)
-        HA_INSTALL_ARG="git+https://github.com/home-assistant/core.git@${HA_VERSION}"
+        HA_INSTALL_ARG="$HA_INSTALL_ARG git+https://github.com/home-assistant/core.git@${HA_VERSION}"
         ;;
     # release: digits and dots only
     *)
-        HA_INSTALL_ARG="homeassistant==${HA_VERSION}"
+        HA_INSTALL_ARG="$HA_INSTALL_ARG homeassistant==${HA_VERSION}"
         ;;
 esac
 
@@ -78,7 +81,7 @@ if [ "$1" != "--full" ]; then
     PHACC_VERSION=$(uv pip show pytest-homeassistant-custom-component | grep ^Version: | awk '{print $2}')
   fi
   if [ -z "$PHACC_VERSION" ]; then
-    echo "Error: Could not determine pytest-homeassistant-custom-component version."
+    echo "Error: Could not determine pytest-homeassistant-custom-component version. Please resolve dependencies."
     exit 1
   fi
   echo "Fetching pytest-homeassistant-custom-component dependencies for version ${PHACC_VERSION}..."

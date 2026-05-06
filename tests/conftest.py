@@ -113,7 +113,7 @@ def mock_telegram_external_calls() -> Generator[None]:
         type="PRIVATE",
         max_reaction_count=100,
         accent_color_id=0,
-        accepted_gift_types=AcceptedGiftTypes(True, True, True, True),
+        accepted_gift_types=AcceptedGiftTypes(True, True, True, True, True),
     )
     test_user = User(12345678, "Testbot", True, "mock last name", "mock username")
     message = Message(
@@ -149,6 +149,7 @@ def mock_telegram_external_calls() -> Generator[None]:
         patch.object(BotMock, "get_me", return_value=test_user),
         patch.object(BotMock, "bot", test_user),
         patch.object(BotMock, "send_message", return_value=message),
+        patch.object(BotMock, "send_message_draft", return_value=True),
         patch.object(BotMock, "send_photo", return_value=message),
         patch.object(BotMock, "send_media_group", side_effect=mock_send_media_group),
         patch.object(BotMock, "send_sticker", return_value=message),

@@ -27,13 +27,22 @@ updates:
     schedule:
       interval: "daily"
     ignore:
-      # Dependabot should not update Home Assistant as that should match the homeassistant key in hacs.json
-      - dependency-name: "homeassistant"
-      # Same for python-telegram-bot, it should match the version specified in manifest.json of telegram_bot integration
-      - dependency-name: "python-telegram-bot[socks]"
-      # The version of telegramify_markdown should match the version specified in manifest.json of this integration
-      - dependency-name: "telegramify-markdown[mermaid]"
       # The correct version of pytest-homeassistant-custom-component is selected by pip to match the version of Home Assistant, the minimum version is there because some old versions of pytest-homeassistant-custom-component did not pin the Home Assistant version
       - dependency-name: "pytest-homeassistant-custom-component"
+      # Dependabot should not update Home Assistant as that should match the homeassistant key in hacs.json
+      - dependency-name: "homeassistant"
+      # The following dependencies should match the version specified in manifest.json of this integration
+      # (but we want to receive a notification from dependabot, so they stay commented out)
+      # - dependency-name: "telegramify-markdown[mermaid]"
+      # - dependency-name: "pyogg"
+      # The following dependencies should match the versions used in Home Assistant
+      - dependency-name: "python-telegram-bot[socks]"
+      - dependency-name: "aiofiles"
+      - dependency-name: "colorlog"
+      - dependency-name: "hassil"
+      - dependency-name: "PyTurboJPEG"
+      - dependency-name: "mutagen"
+      - dependency-name: "ha-ffmpeg"
+      - dependency-name: "home-assistant-intents"
     cooldown:
       default-days: 7

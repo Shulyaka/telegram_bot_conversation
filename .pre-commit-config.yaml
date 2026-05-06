@@ -123,3 +123,11 @@ repos:
         require_serial: true
         types_or: [python, pyi]
         files: ^(custom_components|pylint)/.+\.(py|pyi)$
+
+      # Keep requirements aligned with the integration manifest and HA pins
+      - id: check-requirements-sync
+        name: check requirements sync
+        entry: scripts/run-in-env.sh scripts/check-requirements-sync
+        language: script
+        files: ^(requirements\.txt|pyproject\.toml|hacs\.json|\.github/dependabot\.yml|custom_components/telegram_bot_conversation/manifest\.json)$
+        require_serial: true

@@ -9,7 +9,7 @@ This is a Home Assistant custom integration that allows you to use the [Telegram
 
 ## Requirements
 
-- Home Assistant 2026.3 or later (2026.5+ is recommended)
+- Home Assistant 2026.5 or later
 - Telegram Bot integration set up and working
 - Any conversation AI integration is recommended, however the NLP Assist works too.
 
@@ -22,7 +22,7 @@ This is a Home Assistant custom integration that allows you to use the [Telegram
 - Start a conversation from scratch with `/new` command
 - Full Markdown support
 - Voice messages as input both input and output
-- The responses are streamed while they are being generated (HA 2026.5+ is recommended for best experience)
+- The responses are streamed while they are being generated
 - You can see the summary of the agent's thoughts and even interrupt the response early
 - Code blocks can be sent as files, mermaid diagrams can be rendered into images, and LaTeX symbols can be translated into Unicode
 - Attachments are supported if your agent supports them (usually only images and pdf, and only for the last message; also text files are inserted inline)
