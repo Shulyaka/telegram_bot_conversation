@@ -789,8 +789,11 @@ class TelegramChatHandler:
                     thread_id,
                     err,
                 )
-            if current_conversation.receive_lock.locked():
-                current_conversation.receive_lock.release()
+            except Exception:  # noqa: BLE001
+                # If the task was cancelled, then we already released the lock
+                # and probably acquired a new one already for the next task
+                if current_conversation.receive_lock.locked():
+                    current_conversation.receive_lock.release()
 
         task.add_done_callback(_clear_task)
 
@@ -1461,6 +1464,8 @@ class TelegramChatHandler:
                         )
                         with contextlib.suppress(asyncio.CancelledError):
                             await task
+                    if current_conversation.receive_lock.locked():
+                        current_conversation.receive_lock.release()
                     if current_conversation.draft_cancel:
                         current_conversation.draft_cancel()
                         current_conversation.draft_cancel = None
