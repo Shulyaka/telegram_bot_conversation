@@ -494,7 +494,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         return {
             "messages": [
                 re.sub(
-                    r"🖼 (\[[^\]]*\]\(tg://time\?)",
+                    r"🖼(\[[^\]]*\]\(tg://time\?)",
                     "!\\1",
                     entities_to_markdownv2(item.text, item.entities),
                 )
