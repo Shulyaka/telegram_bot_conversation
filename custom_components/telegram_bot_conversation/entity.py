@@ -1459,13 +1459,13 @@ class TelegramChatHandler:
             case "/new":
                 if current_conversation := self.conversations.get(thread_id):
                     if (task := current_conversation.task) and not task.done():
-                        task.cancel(
-                            "Conversation interrupted by new conversation command."
-                        )
-                        with contextlib.suppress(asyncio.CancelledError):
-                            await task
-                    if current_conversation.receive_lock.locked():
-                        current_conversation.receive_lock.release()
+                        # Wait till the incoming queue is empty
+                        async with current_conversation.receive_lock:
+                            task.cancel(
+                                "Conversation interrupted by new conversation command."
+                            )
+                            with contextlib.suppress(asyncio.CancelledError):
+                                await task
                     if current_conversation.draft_cancel:
                         current_conversation.draft_cancel()
                         current_conversation.draft_cancel = None
