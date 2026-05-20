@@ -1,0 +1,16 @@
+markdownify:
+  fields:
+    text:
+      required: true
+      selector:
+        text:
+          multiline: true
+      example: "Hello, *world*!"
+    parse_mode:
+      required: false
+      default: "markdownv2"
+      selector:
+        select:
+          options:
+            - "markdownv2"
+            - "plain_text"

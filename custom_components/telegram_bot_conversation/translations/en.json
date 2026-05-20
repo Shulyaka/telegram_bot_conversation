@@ -105,5 +105,21 @@
         "on": "Enabled"
       }
     }
+  },
+  "services": {
+    "markdownify": {
+      "description": "Fixes or removes markdown formatting and splits the message into multiple chunks if it exceeds Telegram's message length limit.",
+      "fields": {
+        "parse_mode": {
+          "description": "The target parse mode. Use 'markdownv2' to convert to Telegram's markdown format, or 'plain_text' to remove all markdown formatting.",
+          "name": "Parse mode"
+        },
+        "text": {
+          "description": "The input text, may contain markdown formatting.",
+          "name": "Text"
+        }
+      },
+      "name": "Markdownify"
+    }
   }
 }

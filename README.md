@@ -29,3 +29,4 @@ This is a Home Assistant custom integration that allows you to use the [Telegram
 - Group chats are supported (requires a separate config subentry for both `telegram_bot` and `telegram_bot_conversation`).
 - Partial support for threaded bots (awaiting `telegram_bot` for full support)
 - Manual `telegram_bot.send_message` service call support (they are added to the conversation history)
+- A helper `telegram_bot_conversation.markdownify` service to remove markdown formatting or fix it to conform with strict Telegram MarkdownV2 format that you can use in your scripts and automations
