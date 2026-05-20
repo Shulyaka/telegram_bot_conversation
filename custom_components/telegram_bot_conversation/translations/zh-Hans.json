@@ -105,5 +105,21 @@
         "on": "启用"
       }
     }
+  },
+  "services": {
+    "markdownify": {
+      "description": "修正或移除 Markdown 格式；如果消息超过 Telegram 的消息长度限制，则将其拆分为多个片段。",
+      "fields": {
+        "parse_mode": {
+          "description": "目标解析模式。使用 'markdownv2' 转换为 Telegram 的 Markdown 格式，或使用 'plain_text' 移除所有 Markdown 格式。",
+          "name": "解析模式"
+        },
+        "text": {
+          "description": "输入文本，可以包含 Markdown 格式。",
+          "name": "文本"
+        }
+      },
+      "name": "Markdownify"
+    }
   }
 }

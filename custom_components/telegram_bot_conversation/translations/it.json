@@ -105,5 +105,21 @@
         "on": "Abilitato"
       }
     }
+  },
+  "services": {
+    "markdownify": {
+      "description": "Corregge o rimuove la formattazione Markdown e divide il messaggio in più parti se supera il limite di lunghezza dei messaggi di Telegram.",
+      "fields": {
+        "parse_mode": {
+          "description": "La modalità di analisi di destinazione. Usa 'markdownv2' per convertire nel formato Markdown di Telegram, oppure 'plain_text' per rimuovere tutta la formattazione Markdown.",
+          "name": "Modalità di analisi"
+        },
+        "text": {
+          "description": "Il testo di input; può contenere formattazione Markdown.",
+          "name": "Testo"
+        }
+      },
+      "name": "Markdownify"
+    }
   }
 }

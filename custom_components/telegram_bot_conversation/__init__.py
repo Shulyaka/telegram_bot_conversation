@@ -14,8 +14,13 @@ https://github.com/Shulyaka/telegram_bot_conversation
 from asyncio import CancelledError, Task
 from collections.abc import Mapping
 from contextlib import suppress
+import re
 from types import MappingProxyType
 from typing import Any
+
+from telegramify_markdown import entities_to_markdownv2, telegramify
+from telegramify_markdown.content import ContentType
+import voluptuous as vol
 
 from homeassistant.components.conversation.chat_log import async_subscribe_chat_logs
 from homeassistant.components.conversation.const import ChatLogEventType
@@ -23,6 +28,8 @@ from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
 from homeassistant.components.telegram_bot.const import (
     ATTR_CHAT_ID,
     ATTR_MESSAGE_TAG,
+    ATTR_PARSER,
+    ATTR_TEXT,
     ATTR_USERNAME,
     CONF_CHAT_ID,
     CONF_CONFIG_ENTRY_ID,
@@ -31,6 +38,8 @@ from homeassistant.components.telegram_bot.const import (
     EVENT_TELEGRAM_CALLBACK,
     EVENT_TELEGRAM_COMMAND,
     EVENT_TELEGRAM_TEXT,
+    PARSER_MD2,
+    PARSER_PLAIN_TEXT,
     SERVICE_SEND_MESSAGE,
     SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
 )
@@ -42,9 +51,22 @@ from homeassistant.const import (
     ATTR_SERVICE_DATA,
     EVENT_CALL_SERVICE,
 )
-from homeassistant.core import Context, Event, HomeAssistant, callback
+from homeassistant.core import (
+    Context,
+    Event,
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+    callback,
+)
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
-from homeassistant.helpers import entity_registry as er, issue_registry as ir
+from homeassistant.helpers import (
+    config_validation as cv,
+    entity_registry as er,
+    issue_registry as ir,
+)
+from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     CONF_TELEGRAM_ENTRY,
@@ -60,6 +82,9 @@ from .entity import TelegramChatHandler
 from .recursive_data_flow import validate_data, validate_options, validate_subentry_data
 
 type TelegramBotConversationConfigEntry = ConfigEntry[TelegramBotConversationHandler]
+
+CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
+SERVICE_MARKDOWNIFY = "markdownify"
 
 
 class TelegramBotConversationHandler:
@@ -456,6 +481,48 @@ async def async_migrate_entry(
 
     LOGGER.debug(
         "Migration to version %s:%s successful", entry.version, entry.minor_version
+    )
+
+    return True
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register services."""
+
+    async def markdownify(call: ServiceCall) -> ServiceResponse:
+        """Fix or remove markdown formatting."""
+        return {
+            "messages": [
+                re.sub(
+                    r"🖼 (\[[^\]]*\]\(tg://time\?)",
+                    "!\\1",
+                    entities_to_markdownv2(item.text, item.entities),
+                )
+                if call.data[ATTR_PARSER] == PARSER_MD2
+                else item.text
+                for item in await telegramify(
+                    content=call.data[ATTR_TEXT],
+                    latex_escape=True,
+                    render_mermaid=False,
+                    min_file_lines=0,
+                )
+                if item.content_type == ContentType.TEXT
+            ]
+        }
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_MARKDOWNIFY,
+        markdownify,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_TEXT): cv.string,
+                vol.Optional(ATTR_PARSER, default=PARSER_MD2): vol.In(
+                    [PARSER_MD2, PARSER_PLAIN_TEXT]
+                ),
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
     )
 
     return True
