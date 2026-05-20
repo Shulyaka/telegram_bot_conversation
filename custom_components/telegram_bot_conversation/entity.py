@@ -237,6 +237,7 @@ class ConversationConfig:
     delta_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
     content_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
     send_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
+    receive_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
     draft_cancel: CALLBACK_TYPE | None = field(init=False, default=None)
     sent_drafts: dict[int, str] | None = field(init=False, default=None)
 
@@ -748,6 +749,7 @@ class TelegramChatHandler:
             thread_id, ConversationConfig()
         )
 
+        await current_conversation.receive_lock.acquire()
         if (task := current_conversation.task) and not task.done():
             task.cancel("Conversation interrupted by new user message.")
             with contextlib.suppress(asyncio.CancelledError):
@@ -756,7 +758,7 @@ class TelegramChatHandler:
         task_name = f"telegram_conversation_{self.chat_id}_{thread_id}"
         task = self.entry.async_create_task(
             self.hass,
-            self.async_process_message(event),
+            self.async_process_message(event, current_conversation.receive_lock),
             task_name,
         )
         current_conversation.task = task
@@ -787,10 +789,17 @@ class TelegramChatHandler:
                     thread_id,
                     err,
                 )
+            except Exception:  # noqa: BLE001
+                # If the task was cancelled, then we already released the lock
+                # and probably acquired a new one already for the next task
+                if current_conversation.receive_lock.locked():
+                    current_conversation.receive_lock.release()
 
         task.add_done_callback(_clear_task)
 
-    async def async_process_message(self, event: Event) -> None:
+    async def async_process_message(
+        self, event: Event, receive_lock: asyncio.Lock
+    ) -> None:
         """Handle conversation task."""
         context = self._get_context(event.context, event.data.get(ATTR_USER_ID))
 
@@ -869,6 +878,7 @@ class TelegramChatHandler:
                         input_text = f"{file_path.name}:\n```{mime_type[5:].removeprefix('plain')}\n{content}\n```"
                         if event.data.get(ATTR_TEXT):
                             input_text += f"\n\n{event.data.get(ATTR_TEXT)}"
+                        chat_log.async_add_user_content(UserContent(input_text))
                     elif mime_type == "audio/ogg":
                         stt_entity_id = self.config.get(CONF_STT)
                         if not stt_entity_id:
@@ -935,11 +945,12 @@ class TelegramChatHandler:
                         if event.data.get(ATTR_TEXT):
                             input_text += f"\n\n{event.data.get(ATTR_TEXT)}"
                         extra_system_prompt += "\nThe user has sent a voice message that has been transcribed."
+                        chat_log.async_add_user_content(UserContent(input_text))
                     else:
                         input_text = event.data.get(ATTR_TEXT) or file_path.name
                         chat_log.async_add_user_content(
                             UserContent(
-                                input_text,  # Must be exactly same text as in async_converse
+                                input_text,
                                 attachments=[
                                     Attachment(
                                         media_content_id=f"media-source://{TELEGRAM_DOMAIN}/{event.data.get(ATTR_FILE_ID)}",
@@ -951,6 +962,7 @@ class TelegramChatHandler:
                         )
                 else:
                     input_text = event.data.get(ATTR_TEXT) or ""
+                    chat_log.async_add_user_content(UserContent(input_text))
             except Exception as err:
                 message = async_translate_message(
                     self.hass,
@@ -963,11 +975,13 @@ class TelegramChatHandler:
                     context=context,
                 )
                 raise
+            finally:
+                receive_lock.release()
 
             try:
                 conversation_result = await async_converse(
                     self.hass,
-                    text=input_text,
+                    text=input_text,  # Must be exactly same text as in UserContent above
                     conversation_id=session.conversation_id,
                     context=context,
                     agent_id=self.agent_id,
@@ -1445,11 +1459,13 @@ class TelegramChatHandler:
             case "/new":
                 if current_conversation := self.conversations.get(thread_id):
                     if (task := current_conversation.task) and not task.done():
-                        task.cancel(
-                            "Conversation interrupted by new conversation command."
-                        )
-                        with contextlib.suppress(asyncio.CancelledError):
-                            await task
+                        # Wait till the incoming queue is empty
+                        async with current_conversation.receive_lock:
+                            task.cancel(
+                                "Conversation interrupted by new conversation command."
+                            )
+                            with contextlib.suppress(asyncio.CancelledError):
+                                await task
                     if current_conversation.draft_cancel:
                         current_conversation.draft_cancel()
                         current_conversation.draft_cancel = None

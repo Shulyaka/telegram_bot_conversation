@@ -334,6 +334,8 @@ async def test_text_attachment_is_inserted_inline(
         response={ATTR_FILE_PATH: attachment_path.as_posix()},
     )
 
+    receive_lock = asyncio.Lock()
+    await receive_lock.acquire()
     await chat_handler.async_process_message(
         Event(
             "telegram_attachment",
@@ -345,7 +347,8 @@ async def test_text_attachment_is_inserted_inline(
                 ATTR_MESSAGE_THREAD_ID: 0,
             },
             context=Context(),
-        )
+        ),
+        receive_lock,
     )
 
     mock_conversation_agent.assert_awaited_once()
@@ -353,6 +356,7 @@ async def test_text_attachment_is_inserted_inline(
     assert user_content.content == (
         "notes.py:\n```x-python\nprint('hello')\n\n```\n\nPlease review this"
     )
+    assert not receive_lock.locked()
 
 
 async def test_threaded_message_uses_thread_specific_conversation(
@@ -370,6 +374,8 @@ async def test_threaded_message_uses_thread_specific_conversation(
     ]
     context = Context()
 
+    receive_lock = asyncio.Lock()
+    await receive_lock.acquire()
     with patch.object(chat_handler, "send_message", AsyncMock()) as send_message:
         await chat_handler.async_process_message(
             Event(
@@ -380,7 +386,8 @@ async def test_threaded_message_uses_thread_specific_conversation(
                     ATTR_MESSAGE_THREAD_ID: thread_id,
                 },
                 context=context,
-            )
+            ),
+            receive_lock,
         )
 
     mock_conversation_agent.assert_awaited_once()
@@ -399,6 +406,7 @@ async def test_threaded_message_uses_thread_specific_conversation(
         thread_id=thread_id,
         context=context,
     )
+    assert not receive_lock.locked()
 
 
 async def test_callback_processes_command_and_acknowledges_query(
@@ -476,6 +484,8 @@ async def test_binary_attachment_is_passed_to_agent(
         response={ATTR_FILE_PATH: attachment_path.as_posix()},
     )
 
+    receive_lock = asyncio.Lock()
+    await receive_lock.acquire()
     with patch.object(chat_handler, "send_message", AsyncMock()):
         await chat_handler.async_process_message(
             Event(
@@ -488,7 +498,8 @@ async def test_binary_attachment_is_passed_to_agent(
                     ATTR_MESSAGE_THREAD_ID: 0,
                 },
                 context=Context(),
-            )
+            ),
+            receive_lock,
         )
 
     mock_conversation_agent.assert_awaited_once()
@@ -501,6 +512,7 @@ async def test_binary_attachment_is_passed_to_agent(
         attachment.media_content_id == "media-source://telegram_bot/telegram-image-id"
     )
     assert attachment.path == attachment_path
+    assert not receive_lock.locked()
 
 
 async def test_attachment_download_error_is_sent_to_chat(
@@ -516,6 +528,8 @@ async def test_attachment_download_error_is_sent_to_chat(
         response={},
     )
 
+    receive_lock = asyncio.Lock()
+    await receive_lock.acquire()
     with (
         patch.object(chat_handler, "send_message", AsyncMock()) as send_message,
         pytest.raises(KeyError),
@@ -530,12 +544,14 @@ async def test_attachment_download_error_is_sent_to_chat(
                     ATTR_MESSAGE_THREAD_ID: 0,
                 },
                 context=Context(),
-            )
+            ),
+            receive_lock,
         )
 
     send_message.assert_awaited_once()
     assert send_message.await_args.kwargs["message"].startswith("Error:")
     assert send_message.await_args.kwargs["thread_id"] == 0
+    assert not receive_lock.locked()
 
 
 async def test_generate_image_handler_sends_photo(
@@ -648,5 +664,5 @@ async def test_new_text_cancels_active_conversation(
         await hass.async_block_till_done()
 
     assert old_task.cancelled()
-    process_message.assert_awaited_once_with(event)
+    process_message.assert_awaited_once_with(event, current_conversation.receive_lock)
     assert current_conversation.task is None
