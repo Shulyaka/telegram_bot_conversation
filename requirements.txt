@@ -10,7 +10,7 @@ pre-commit-hooks>=6.0.0
 codespell>=2.4.2
 ruff>=0.15.12
 yamllint>=1.38.0
-zizmor>=1.24.1
+zizmor>=1.25.0
 telegramify-markdown[mermaid]==1.1.5
 PyTurboJPEG==1.8.3
 pyogg==0.6.14a1
