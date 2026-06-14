@@ -12,7 +12,7 @@
   "requirements": [
     "aiofiles==24.1.0",
     "pyogg==0.6.14a1",
-    "telegramify-markdown[mermaid]==1.1.5"
+    "telegramify-markdown[mermaid]==1.2.0"
   ],
   "version": "1.2.0"
 }
