@@ -5,7 +5,7 @@ pytest-homeassistant-custom-component>=0.13.317
 python-telegram-bot[socks]==22.7
 python-typing-update>=0.7.2
 pip>=26.1.2
-pre-commit>=4.6.0
+pre-commit>=4.6.1
 pre-commit-hooks>=6.0.0
 codespell>=2.4.2
 ruff>=0.16.0
