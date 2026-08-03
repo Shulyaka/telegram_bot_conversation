@@ -245,7 +245,7 @@ class ConversationConfig:
 class TelegramChatHandler:
     """Handle conversation logic for a single Telegram chat."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         hass: HomeAssistant,
         entry: ConfigEntry,
