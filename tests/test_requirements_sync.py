@@ -19,7 +19,7 @@ import pytest
         ("", ">=1.1.0", "==1.0.0", "==1.0.0", None),
     ],
 )
-def test_sync_homeassistant_requirements(
+def test_sync_homeassistant_requirements(  # noqa: PLR0917
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
