@@ -352,7 +352,13 @@ def sync_homeassistant_ignored_requirements(
 
     for ignored in dependabot_pip_ignored_dependencies():
         ignored_requirement = Requirement(ignored)
-        ha_requirement = ha_by_base_key.get(normalize_name(ignored_requirement.name))
+        name = normalize_name(ignored_requirement.name)
+        ha_requirement = ha_by_base_key.get(name)
+        ha_dev_requirement = ha_dev_by_base_key.get(name)
+        source_version = homeassistant_version
+        if ha_requirement is None:
+            ha_requirement = ha_dev_requirement
+            source_version = "dev"
         if ha_requirement is None:
             continue
 
@@ -361,9 +367,6 @@ def sync_homeassistant_ignored_requirements(
             continue
 
         ha_dev_version = None
-        ha_dev_requirement = ha_dev_by_base_key.get(
-            normalize_name(ignored_requirement.name)
-        )
         if ha_dev_requirement is not None:
             ha_dev_version = pinned_equal_version(ha_dev_requirement.requirement)
 
@@ -390,7 +393,7 @@ def sync_homeassistant_ignored_requirements(
         update_manifest_requirement(ignored_requirement.name, desired)
 
         if current is None:
-            print(f"Adding {desired} from Home Assistant {homeassistant_version}")
+            print(f"Adding {desired} from Home Assistant {source_version}")
             lines.append(desired)
             requirement = Requirement(lines[-1])
             new_line = RequirementLine(len(lines) - 1, lines[-1], requirement)
@@ -402,9 +405,7 @@ def sync_homeassistant_ignored_requirements(
             continue
 
         print(
-            "Updating "
-            f"{current.raw} -> {desired} "
-            f"from Home Assistant {homeassistant_version}"
+            f"Updating {current.raw} -> {desired} from Home Assistant {source_version}"
         )
         lines[current.line_no] = desired
         new_line = RequirementLine(current.line_no, desired, Requirement(desired))

@@ -44,5 +44,6 @@ updates:
       - dependency-name: "mutagen"
       - dependency-name: "ha-ffmpeg"
       - dependency-name: "home-assistant-intents"
+      - dependency-name: "gazetteer-matcher"
     cooldown:
       default-days: 7
