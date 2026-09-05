@@ -2,9 +2,15 @@
 
 # script/bootstrap: Install/update all dependencies required to run the project
 
-set -e
+set -eu
 
 cd "$(dirname "$0")/.."
+
+case "${1:-}" in
+  "") FULL_INSTALL=false ;;
+  --full) FULL_INSTALL=true ;;
+  *) echo "Usage: scripts/bootstrap [--full]" >&2; exit 2 ;;
+esac
 
 echo "==> Checking for uv..."
 if ! command -v uv >/dev/null 2>&1; then
@@ -16,85 +22,98 @@ if ! command -v uv >/dev/null 2>&1; then
   fi
 fi
 
-if [ -z "$HA_VERSION" ] || [ "$HA_VERSION" = "hacs" ]; then
-  HA_VERSION=$(grep '"homeassistant"' hacs.json | head -1 | sed 's/.*"homeassistant"\s*:\s*"\([^"]*\)".*/\1/')
-fi
-
-if [ -z "$HA_VERSION" ] || [ "$HA_VERSION" = "latest" ]; then
-  HA_VERSION=$(curl -fsSL https://pypi.org/pypi/homeassistant/json | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' | head -1)
+HA_VERSION=${HA_VERSION:-hacs}
+if [ "$HA_VERSION" = "hacs" ]; then
+  HA_VERSION=$(python3 -c 'import json; print(json.load(open("hacs.json"))["homeassistant"])')
+elif [ "$HA_VERSION" = "latest" ]; then
+  HA_VERSION=$(curl -fsSL https://pypi.org/pypi/homeassistant/json | python3 -c 'import json, sys; print(json.load(sys.stdin)["info"]["version"])')
 fi
 
 if [ -z "$HA_VERSION" ]; then
-  echo "Error: Could not determine Home Assistant version. Please set the HA_VERSION environment variable."
+  echo "Error: Could not determine Home Assistant version. Please set HA_VERSION." >&2
   exit 1
 fi
 
 echo "==> Installing dependencies..."
 
-PIPARGS="--upgrade"
-if [ -z "$VIRTUAL_ENV" ]; then
+set -- --upgrade
+if [ -z "${VIRTUAL_ENV:-}" ]; then
   echo "No virtual environment detected, installing globally..."
-  PIPARGS="$PIPARGS --system"
+  set -- "$@" --system
 else
   echo "Virtual environment detected: $VIRTUAL_ENV"
 fi
 
 tmpdir=$(mktemp -d)
-trap "rm -rf $tmpdir" EXIT
+trap 'rm -rf "$tmpdir"' EXIT
 
 echo "Fetching Home Assistant dependencies for version ${HA_VERSION}..."
-
 HA_CORE_BASE_URL="https://raw.githubusercontent.com/home-assistant/core/${HA_VERSION}"
-mkdir -p $tmpdir/homeassistant
-curl -fsSL "${HA_CORE_BASE_URL}/homeassistant/package_constraints.txt" -o $tmpdir/homeassistant/package_constraints.txt  # constraints for requirements files
-curl -fsSL "${HA_CORE_BASE_URL}/requirements.txt" -o $tmpdir/requirements.txt  # required by requirements_all.txt
-curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_pre_commit.txt" -o $tmpdir/requirements_test_pre_commit.txt  # required by requirements_test.txt
-curl -fsSL "${HA_CORE_BASE_URL}/requirements_test.txt" -o $tmpdir/requirements_test.txt
-curl -fsSL "${HA_CORE_BASE_URL}/requirements_all.txt" -o $tmpdir/requirements_all.txt
-
-if [ "$1" = "--full" ]; then
-  HA_INSTALL_ARG="$HA_INSTALL_ARG --requirement $tmpdir/requirements_all.txt --requirement $tmpdir/requirements_test.txt"
-else
-  sed -e 's/^-r /#-r /' $tmpdir/requirements_all.txt > $tmpdir/constraints_all.txt
-  HA_INSTALL_ARG="$HA_INSTALL_ARG --constraint $tmpdir/constraints_all.txt"
-fi
+mkdir -p "$tmpdir/homeassistant"
+curl -fsSL "${HA_CORE_BASE_URL}/homeassistant/package_constraints.txt" -o "$tmpdir/homeassistant/package_constraints.txt"  # constraints for requirements files
+curl -fsSL "${HA_CORE_BASE_URL}/requirements_all.txt" -o "$tmpdir/requirements_all.txt"
+sed -e 's/^-r /#-r /' "$tmpdir/requirements_all.txt" > "$tmpdir/constraints_all.txt"
 
 case "$HA_VERSION" in
-    # prerelease: contains a/b/rc suffix
-    *[0-9]a[0-9]*|*[0-9]b[0-9]*|*[0-9]rc[0-9]*)
-        PIPARGS="$PIPARGS --pre"
-        HA_INSTALL_ARG="$HA_INSTALL_ARG homeassistant==${HA_VERSION}"
-        ;;
-    # git ref: contains characters other than digits and dots
-    *[!0-9.]*)
-        HA_INSTALL_ARG="$HA_INSTALL_ARG git+https://github.com/home-assistant/core.git@${HA_VERSION}"
-        ;;
-    # release: digits and dots only
-    *)
-        HA_INSTALL_ARG="$HA_INSTALL_ARG homeassistant==${HA_VERSION}"
-        ;;
+  # prerelease: contains a/b/rc suffix
+  *[0-9]a[0-9]*|*[0-9]b[0-9]*|*[0-9]rc[0-9]*)
+    set -- "$@" --prerelease allow
+    HA_REQUIREMENT="homeassistant==${HA_VERSION}"
+    ;;
+  # git ref: contains characters other than digits and dots
+  *[!0-9.]*)
+    HA_REQUIREMENT="homeassistant @ git+https://github.com/home-assistant/core.git@${HA_VERSION}"
+    ;;
+  # release: digits and dots only
+  *) HA_REQUIREMENT="homeassistant==${HA_VERSION}" ;;
 esac
 
-if [ "$1" != "--full" ]; then
-  PHACC_VERSION=$( (uv pip install --dry-run $PIPARGS --requirement requirements.txt $HA_INSTALL_ARG || uv pip install $PIPARGS --requirement requirements.txt ) 2>&1 | grep "+ pytest-homeassistant-custom-component" | sed -e 's/.*==//')
-  if [ -z "$PHACC_VERSION" ]; then
-    PHACC_VERSION=$(uv pip show pytest-homeassistant-custom-component | grep ^Version: | awk '{print $2}')
+python3 scripts/collect-integration-requirements "$HA_VERSION" > "$tmpdir/integration-requirements.txt"
+printf '%s\n' "$HA_REQUIREMENT" > "$tmpdir/ha-requirements.txt"
+printf -- '-r %s\n' "$tmpdir/integration-requirements.txt" >> "$tmpdir/ha-requirements.txt"
+
+# Keep project requirements separate so the fallback can resolve PHACC independently.
+printf -- '-r %s\n' "$PWD/requirements.txt" > "$tmpdir/project-requirements.txt"
+SPLIT_INSTALL=false
+
+install_ha() {
+  uv pip install "$@" --constraint "$tmpdir/homeassistant/package_constraints.txt" --constraint "$tmpdir/constraints_all.txt" --requirement "$tmpdir/ha-requirements.txt"
+}
+
+split_install() {
+  echo "Warning: Dependencies could not be resolved together. Installing project requirements first, then Home Assistant ${HA_VERSION} and its integration requirements for a best-effort environment."
+  uv pip install "$@" --requirement "$tmpdir/project-requirements.txt"
+  install_ha "$@"
+}
+
+if [ "$FULL_INSTALL" = true ]; then
+  curl -fsSL "${HA_CORE_BASE_URL}/requirements.txt" -o "$tmpdir/requirements.txt"  # required by requirements_all.txt
+  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_pre_commit.txt" -o "$tmpdir/requirements_test_pre_commit.txt"  # required by requirements_test.txt
+  curl -fsSL "${HA_CORE_BASE_URL}/requirements_test.txt" -o "$tmpdir/requirements_test.txt"
+  printf -- '-r %s\n' "$tmpdir/requirements_all.txt" "$tmpdir/requirements_test.txt" >> "$tmpdir/ha-requirements.txt"
+else
+  # Resolve without modifying the environment, then use the matching PHACC tools.
+  if ! uv pip compile "$@" --constraint "$tmpdir/homeassistant/package_constraints.txt" --constraint "$tmpdir/constraints_all.txt" --no-header --no-annotate --output-file "$tmpdir/resolved.txt" requirements.txt "$tmpdir/ha-requirements.txt" > /dev/null; then
+    SPLIT_INSTALL=true
+    uv pip compile "$@" --no-header --no-annotate --output-file "$tmpdir/resolved.txt" requirements.txt > /dev/null
   fi
+  PHACC_VERSION=$(sed -n 's/^pytest-homeassistant-custom-component==//p' "$tmpdir/resolved.txt")
   if [ -z "$PHACC_VERSION" ]; then
-    echo "Error: Could not determine pytest-homeassistant-custom-component version. Please resolve dependencies."
+    echo "Error: Could not determine pytest-homeassistant-custom-component version. Please resolve dependencies." >&2
     exit 1
   fi
   echo "Fetching pytest-homeassistant-custom-component dependencies for version ${PHACC_VERSION}..."
   PHACC_BASE_URL="https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/${PHACC_VERSION}"
-  curl -fsSL "${PHACC_BASE_URL}/requirements_dev.txt" -o $tmpdir/requirements_dev.txt
-  PIPARGS="$PIPARGS --requirement $tmpdir/requirements_dev.txt"
+  curl -fsSL "${PHACC_BASE_URL}/requirements_dev.txt" -o "$tmpdir/requirements_dev.txt"
+  printf -- '-r %s\n' "$tmpdir/requirements_dev.txt" >> "$tmpdir/project-requirements.txt"
+  printf '%s\n' "pytest-homeassistant-custom-component==${PHACC_VERSION}" >> "$tmpdir/project-requirements.txt"
 fi
 
-uv pip install $PIPARGS --requirement requirements.txt $HA_INSTALL_ARG || {
-  echo "Warning: Failed to install dependencies. This usually means that the requirements in requirements.txt are incompatible with the specified Home Assistant version (${HA_VERSION}). Trying again with installing requirements.txt and Home Assistant separately. This may lead to incompatible dependencies, but should work in most cases."
-  uv pip install $PIPARGS --requirement requirements.txt
-  uv pip install $PIPARGS $HA_INSTALL_ARG
-}
+if [ "$SPLIT_INSTALL" = true ]; then
+  split_install "$@"
+elif ! install_ha "$@" --requirement "$tmpdir/project-requirements.txt"; then
+  split_install "$@"
+fi
 
 echo "==> Installing prek hooks..."
 pre-commit uninstall

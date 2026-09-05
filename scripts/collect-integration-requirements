@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+# ruff: noqa: T201
+"""Collect Python requirements from integration dependency manifests."""
+
+from collections.abc import Callable
+import json
+from pathlib import Path
+import sys
+from typing import Any
+from urllib.error import URLError
+from urllib.parse import quote
+from urllib.request import urlopen
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_ha_manifest(version: str, domain: str) -> dict[str, Any]:
+    """Read an integration manifest from the selected Home Assistant revision."""
+    url = (
+        "https://raw.githubusercontent.com/home-assistant/core/"
+        f"{quote(version, safe='')}/homeassistant/components/"
+        f"{quote(domain, safe='')}/manifest.json"
+    )
+    try:
+        with urlopen(url, timeout=30) as response:
+            return json.load(response)
+    except (URLError, ValueError) as err:
+        msg = f"Could not read Home Assistant {version} manifest for {domain}: {err}"
+        raise RuntimeError(msg) from err
+
+
+def collect_requirements(
+    custom_components: Path,
+    load_manifest: Callable[[str], dict[str, Any]],
+) -> list[str]:
+    """Follow required and optional integrations, preferring local manifests."""
+    manifests = {
+        path.parent.name: json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(custom_components.glob("*/manifest.json"))
+    }
+    if not manifests:
+        msg = f"No integration manifests found in {custom_components}"
+        raise ValueError(msg)
+
+    pending = list(manifests)
+    seen: set[str] = set()
+    requirements: set[str] = set()
+    while pending:
+        domain = pending.pop()
+        if domain in seen:
+            continue
+        seen.add(domain)
+        manifest = manifests.get(domain)
+        if manifest is None:
+            manifest = load_manifest(domain)
+        requirements.update(manifest.get("requirements", []))
+        pending.extend(manifest.get("dependencies", []))
+        pending.extend(manifest.get("after_dependencies", []))
+
+    return sorted(requirements)
+
+
+def main() -> int:
+    """Print requirements for bootstrap without importing Home Assistant."""
+    if len(sys.argv) != 2:
+        print("Usage: collect-integration-requirements HA_VERSION", file=sys.stderr)
+        return 2
+    version = sys.argv[1]
+    try:
+        requirements = collect_requirements(
+            REPO_ROOT / "custom_components",
+            lambda domain: load_ha_manifest(version, domain),
+        )
+    except (OSError, ValueError, RuntimeError) as err:
+        print(str(err), file=sys.stderr)
+        return 1
+    for requirement in requirements:
+        print(requirement)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
