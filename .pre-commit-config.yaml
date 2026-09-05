@@ -2,7 +2,7 @@
 # See https://pre-commit.com/hooks.html for more hooks
 #
 # This configuration uses local hooks that rely on packages
-# defined in requirements.txt, avoiding separate pre-commit environments.
+# installed by scripts/bootstrap, avoiding separate pre-commit environments.
 repos:
   - repo: local
     hooks:

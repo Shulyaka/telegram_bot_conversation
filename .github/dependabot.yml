@@ -36,14 +36,8 @@ updates:
       # - dependency-name: "telegramify-markdown[mermaid]"
       # - dependency-name: "pyogg"
       # The following dependencies should match the versions used in Home Assistant
-      - dependency-name: "python-telegram-bot[socks]"
       - dependency-name: "aiofiles"
       - dependency-name: "colorlog"
-      - dependency-name: "hassil"
       - dependency-name: "PyTurboJPEG"
-      - dependency-name: "mutagen"
-      - dependency-name: "ha-ffmpeg"
-      - dependency-name: "home-assistant-intents"
-      - dependency-name: "gazetteer-matcher"
     cooldown:
       default-days: 7
