@@ -4,7 +4,7 @@ home-assistant-intents>=2026.5.5,<=2026.8.28
 pytest-homeassistant-custom-component>=0.13.317
 python-telegram-bot[socks]==22.7
 python-typing-update>=0.7.2
-pip>=26.1.2
+pip>=26.2.1
 pre-commit>=4.6.2
 pre-commit-hooks>=6.0.0
 codespell>=2.4.3
