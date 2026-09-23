@@ -1,6 +1,6 @@
 colorlog==6.10.1
 pytest-homeassistant-custom-component>=0.13.317
-python-typing-update>=0.7.2
+python-typing-update>=0.8.1
 pip>=26.2.1
 pre-commit>=4.6.2
 pre-commit-hooks>=6.0.0
