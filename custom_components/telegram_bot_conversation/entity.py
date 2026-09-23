@@ -14,6 +14,7 @@ from typing import Any, Self
 
 import aiofiles
 import pyogg
+from telegram.constants import InputMediaType
 from telegramify_markdown import entities_to_markdownv2, markdownify, telegramify
 from telegramify_markdown.content import ContentType
 
@@ -38,9 +39,6 @@ from homeassistant.components.conversation.const import (
     ChatLogEventType,
 )
 from homeassistant.components.media_source import async_resolve_media
-from homeassistant.components.telegram_bot import (  # type: ignore[attr-defined]
-    InputMediaType,
-)
 from homeassistant.components.telegram_bot.const import (
     ATTR_CALLBACK_QUERY_ID,
     ATTR_CAPTION,
