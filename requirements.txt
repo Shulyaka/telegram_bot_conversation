@@ -8,7 +8,7 @@ codespell>=2.4.3
 ruff>=0.16.8
 yamllint>=1.38.0
 zizmor>=1.30.1
-telegramify-markdown[mermaid]==1.2.0
+telegramify-markdown[mermaid]==1.4.0
 PyTurboJPEG==1.8.3
 pyogg==0.6.14a1
 aiofiles>=24.1.0,<=25.1.0
