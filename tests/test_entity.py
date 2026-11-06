@@ -1,15 +1,12 @@
 """Tests for telegram_bot_conversation entity."""
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Generator
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from pytest_homeassistant_custom_component.common import (
-    async_capture_events,
-    async_mock_service,
-)
+from pytest_homeassistant.common import async_capture_events, async_mock_service
 
 from custom_components.telegram_bot_conversation.const import (
     CONF_CONVERSATION_AGENT,
@@ -50,7 +47,9 @@ from homeassistant.components.telegram_bot.const import (
     SERVICE_SET_MESSAGE_REACTION,
 )
 from homeassistant.core import Context, Event, HomeAssistant
+from homeassistant.exceptions import HomeAssistantError, Unauthorized
 from homeassistant.helpers.chat_session import async_get_chat_session
+from homeassistant.helpers.llm import ToolInput
 
 
 def _first_chat_handler(mock_config_entry):
@@ -59,27 +58,30 @@ def _first_chat_handler(mock_config_entry):
     return next(iter(mock_config_entry.runtime_data.chat_handlers.values())), subentry
 
 
+@pytest.mark.parametrize("responses", [["Hello!"], ["First reply", "Second reply"]])
 async def test_conversation_stream(
     hass: HomeAssistant,
     mock_receive_telegram_message: Callable[[str], Awaitable[None]],
     mock_conversation_agent: AsyncMock,
     mock_config_entry,
+    responses: list[str],
 ) -> None:
     """Test plain text conversation using a streaming agent."""
     mock_conversation_agent.return_value = [
         conversation.AssistantContentDeltaDict(
-            {"role": "assistant", "content": "Hello!"}
+            {"role": "assistant", "content": content}
         )
+        for content in responses
     ]
     events = async_capture_events(hass, "telegram_sent")
 
     await mock_receive_telegram_message("Hi!")
 
-    assert len(events) == 1
-    event = events[0]
-    assert event.data[ATTR_CHAT_ID] == 12345678
-    assert event.data[ATTR_MESSAGE_THREAD_ID] == 0
-    assert event.context.user_id is not None
+    assert len(events) == len(responses)
+    for event in events:
+        assert event.data[ATTR_CHAT_ID] == 12345678
+        assert event.data[ATTR_MESSAGE_THREAD_ID] == 0
+        assert event.context.user_id is not None
 
     mock_conversation_agent.assert_awaited_once()
     user_content = mock_conversation_agent.await_args.args[0]
@@ -88,10 +90,51 @@ async def test_conversation_stream(
 
     chat_log = next(iter(hass.data.get(conversation.chat_log.DATA_CHAT_LOGS).values()))
 
-    assert len(chat_log.content) == 3
+    assert len(chat_log.content) == len(responses) + 2
     assert chat_log.content[1].content == "Hi!"
-    assert chat_log.content[2].content == "Hello!"
-    assert chat_log.content[2].agent_id == "Mock Agent ID"
+    assert [content.content for content in chat_log.content[2:]] == responses
+    assert all(content.agent_id == "Mock Agent ID" for content in chat_log.content[2:])
+
+    # A later subscribed response must still be delivered, even with identical text.
+    with (
+        async_get_chat_session(hass, chat_log.conversation_id, context=None) as session,
+        conversation.async_get_chat_log(hass, session) as chat_log,
+    ):
+        chat_log.async_add_assistant_content_without_tools(
+            conversation.AssistantContent("External agent", responses[-1])
+        )
+    await hass.async_block_till_done()
+    assert len(events) == len(responses) + 1
+
+
+@pytest.mark.parametrize("partial_stream", [False, True])
+async def test_conversation_agent_error(
+    hass: HomeAssistant,
+    mock_receive_telegram_message: Callable[[str], Awaitable[None]],
+    mock_conversation_agent: AsyncMock,
+    mock_config_entry,
+    partial_stream: bool,
+) -> None:
+    """Handled agent errors are sent once, including after a partial response."""
+
+    def response() -> Generator[conversation.AssistantContentDeltaDict]:
+        if partial_stream:
+            yield conversation.AssistantContentDeltaDict(
+                role="assistant", content="Partial reply"
+            )
+        raise HomeAssistantError("Agent failed")
+
+    mock_conversation_agent.return_value = response()
+    events = async_capture_events(hass, "telegram_sent")
+
+    await mock_receive_telegram_message("Hi!")
+
+    assert len(events) == 1
+    assert events[0].data[ATTR_CHAT_ID] == 12345678
+    mock_conversation_agent.assert_awaited_once()
+    chat_log = next(iter(hass.data[conversation.chat_log.DATA_CHAT_LOGS].values()))
+    assert isinstance(chat_log.content[-1], conversation.AssistantContent)
+    assert chat_log.content[-1].content == "Error: Agent failed"
 
 
 async def test_conversation_nonstream(
@@ -123,6 +166,110 @@ async def test_conversation_nonstream(
     assert chat_log.content[1].content == "Hi!"
     assert chat_log.content[-1].content == "Hello from Home Assistant."
     assert chat_log.content[-1].agent_id == "conversation.home_assistant"
+
+
+async def test_conversation_rejects_another_user_before_adding_content(
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_conversation_agent: AsyncMock,
+) -> None:
+    """A rejected conversation turn releases the lock and leaves history intact."""
+    chat_handler, _ = _first_chat_handler(mock_config_entry)
+    conversation_id = f"telegram_{chat_handler.chat_id}"
+    owner_context = Context(user_id=chat_handler.user_id)
+    with (
+        async_get_chat_session(hass, conversation_id, context=owner_context) as session,
+        conversation.async_get_chat_log(hass, session) as chat_log,
+    ):
+        chat_log.async_add_user_content(conversation.UserContent("Owner question"))
+        chat_log.async_add_assistant_content_without_tools(
+            conversation.AssistantContent("Mock Agent ID", "Owner reply")
+        )
+    original_content = list(chat_log.content)
+    other_user = await hass.auth.async_create_user("Another user")
+    receive_lock = asyncio.Lock()
+    await receive_lock.acquire()
+
+    with (
+        patch.object(chat_handler, "send_message", AsyncMock()) as send_message,
+        pytest.raises(Unauthorized),
+    ):
+        await chat_handler.async_process_message(
+            Event(
+                "telegram_text",
+                {ATTR_TEXT: "Another user's question"},
+                context=Context(user_id=other_user.id),
+            ),
+            receive_lock,
+        )
+
+    assert not receive_lock.locked()
+    assert chat_log.content == original_content
+    assert session.user_id == chat_handler.user_id
+    send_message.assert_awaited_once()
+    mock_conversation_agent.assert_not_awaited()
+
+
+async def test_external_message_does_not_claim_conversation_ownership(
+    hass: HomeAssistant,
+    mock_config_entry,
+) -> None:
+    """A notification does not assign its automation user's ownership to the chat."""
+    chat_handler, _ = _first_chat_handler(mock_config_entry)
+    other_user = await hass.auth.async_create_user("Automation user")
+
+    await chat_handler.async_handle_service_call(
+        SERVICE_SEND_MESSAGE,
+        {ATTR_MESSAGE: "An external notification"},
+        Context(user_id=other_user.id),
+    )
+
+    with async_get_chat_session(
+        hass,
+        f"telegram_{chat_handler.chat_id}",
+        context=Context(user_id=chat_handler.user_id),
+    ) as session:
+        assert session.user_id == chat_handler.user_id
+    chat_log = hass.data[conversation.chat_log.DATA_CHAT_LOGS][session.conversation_id]
+    assert chat_log.content[-1].content == "An external notification"
+
+
+async def test_interrupted_tool_call_gets_an_error_result(
+    hass: HomeAssistant,
+    mock_config_entry,
+) -> None:
+    """Interrupted tool calls receive the structured error expected by HA agents."""
+    chat_handler, _ = _first_chat_handler(mock_config_entry)
+    context = Context(user_id=chat_handler.user_id)
+    chat_handler.conversations.setdefault(0, ConversationConfig())
+    tool_call = ToolInput(tool_name="HassTurnOn", tool_args={}, id="interrupted-tool")
+
+    with (
+        async_get_chat_session(
+            hass, f"telegram_{chat_handler.chat_id}", context=context
+        ) as session,
+        conversation.async_get_chat_log(hass, session) as chat_log,
+        patch.object(chat_handler, "send_message", AsyncMock()),
+        patch.object(chat_log, "llm_api", AsyncMock()) as llm_api,
+    ):
+        llm_api.async_call_tool.side_effect = asyncio.CancelledError
+        with pytest.raises(asyncio.CancelledError):
+            async for _ in chat_log.async_add_assistant_content(
+                conversation.AssistantContent(
+                    agent_id="Mock Agent ID", tool_calls=[tool_call]
+                )
+            ):
+                pass
+        await chat_handler.async_chat_log_delta_listener(
+            chat_log, {"role": None}, 0, None, context
+        )
+
+    result = chat_log.content[-1]
+    assert isinstance(result, conversation.ToolResultContent)
+    assert result.tool_call_id == tool_call.id
+    assert result.tool_name == tool_call.tool_name
+    assert result.result.error is True
+    assert "Conversation interrupted" in result.result.data["error"]
 
 
 async def test_prompt(
@@ -237,7 +384,9 @@ async def test_reaction_prefix_is_sent_as_message_reaction(
     )
 
     with (
-        async_get_chat_session(hass, f"telegram_{chat_handler.chat_id}") as session,
+        async_get_chat_session(
+            hass, f"telegram_{chat_handler.chat_id}", context=context
+        ) as session,
         conversation.async_get_chat_log(
             hass,
             session,
@@ -609,6 +758,7 @@ async def test_generate_image_handler_sends_photo(
         task_name=DOMAIN,
         entity_id=None,
         instructions="Draw a lighthouse",
+        context=context,
     )
     resolve_media.assert_awaited_once_with(
         hass,

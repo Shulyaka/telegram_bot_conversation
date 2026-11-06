@@ -6,7 +6,7 @@ import inspect
 from types import MappingProxyType
 from typing import Any, ClassVar, cast
 
-import voluptuous as vol
+import probatio
 
 from homeassistant.config_entries import (
     HANDLERS,
@@ -28,7 +28,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import AbortFlow, section
 from homeassistant.exceptions import HomeAssistantError
 
-RecursiveStep = tuple[str, vol.Schema, dict[str, Any], bool]
+RecursiveStep = tuple[str, probatio.Schema, dict[str, Any], bool]
 RecursiveFlowResult = ConfigFlowResult | SubentryFlowResult
 
 _CLASS_ATTRIBUTES_TO_COPY = (
@@ -102,17 +102,17 @@ class RecursiveBaseFlow:
     MINOR_VERSION = 1
 
     domain: ClassVar[str | None] = None
-    data_schema: ClassVar[vol.Schema | None] = None
-    options_schema: ClassVar[vol.Schema | None] = None
-    subentries_schema: ClassVar[dict[str, vol.Schema] | None] = None
+    data_schema: ClassVar[probatio.Schema | None] = None
+    options_schema: ClassVar[probatio.Schema | None] = None
+    subentries_schema: ClassVar[dict[str, probatio.Schema] | None] = None
     hass: HomeAssistant
 
     def __init_subclass__(
         cls,
         *,
-        data_schema: vol.Schema | None = None,
-        options_schema: vol.Schema | None = None,
-        subentries_schema: dict[str, vol.Schema] | None = None,
+        data_schema: probatio.Schema | None = None,
+        options_schema: probatio.Schema | None = None,
+        subentries_schema: dict[str, probatio.Schema] | None = None,
         **kwargs: Any,
     ) -> None:
         """Set class-level schemas if provided."""
@@ -145,13 +145,13 @@ class RecursiveBaseFlow:
             return self.handler[1]
         raise NotImplementedError
 
-    async def get_data_schema(self) -> vol.Schema:
+    async def get_data_schema(self) -> probatio.Schema:
         """Get data schema."""
         if self.data_schema is not None:
             return self.data_schema
         raise NotImplementedError
 
-    async def get_options_schema(self) -> vol.Schema:
+    async def get_options_schema(self) -> probatio.Schema:
         """Get options schema."""
         if self.options_schema is not None:
             return self.options_schema
@@ -161,7 +161,7 @@ class RecursiveBaseFlow:
         """Get default subentries."""
         return None
 
-    async def get_subentry_schema(self, subentry_type: str) -> vol.Schema:
+    async def get_subentry_schema(self, subentry_type: str) -> probatio.Schema:
         """Get subentry schema."""
         if (
             self.subentries_schema is not None
@@ -253,8 +253,8 @@ class RecursiveDataFlow(RecursiveBaseFlow):
 
     data: dict[str, Any] | None
     options: dict[str, Any] | None
-    _data_schema: vol.Schema | None
-    _options_schema: vol.Schema | None
+    _data_schema: probatio.Schema | None
+    _options_schema: probatio.Schema | None
 
     def __init__(self) -> None:
         """Initialize the flow."""
@@ -264,19 +264,19 @@ class RecursiveDataFlow(RecursiveBaseFlow):
         self._options_schema = None
         self._config_steps: Generator[RecursiveStep] | None = None
         self._current_step_id: str | None = None
-        self._current_step_schema: vol.Schema | None = None
+        self._current_step_schema: probatio.Schema | None = None
         self._current_step_data: dict[str, Any] | None = None
         self._last_step = False
 
     @property
-    def _effective_data_schema(self) -> vol.Schema | None:
+    def _effective_data_schema(self) -> probatio.Schema | None:
         """Return the schema used for config flow data steps."""
         if self._data_schema is not None:
             return self._data_schema
         return type(self).data_schema
 
     @property
-    def _effective_options_schema(self) -> vol.Schema | None:
+    def _effective_options_schema(self) -> probatio.Schema | None:
         """Return the schema used for options or subentry steps."""
         if self._options_schema is not None:
             return self._options_schema
@@ -287,24 +287,24 @@ class RecursiveDataFlow(RecursiveBaseFlow):
 
         def traverse_config(
             name: str,
-            schema: vol.Schema,
+            schema: probatio.Schema,
             data: dict[str, Any],
             last_config: bool = False,
         ) -> Generator[RecursiveStep]:
             current_schema: dict[Any, Any] = {}
-            recursive_schema: list[tuple[str, vol.Schema]] = []
+            recursive_schema: list[tuple[str, probatio.Schema]] = []
 
             for var, val in schema.schema.items():
-                if isinstance(val, vol.Schema):
+                if isinstance(val, probatio.Schema):
                     recursive_schema.append((str(var), val))
                 elif isinstance(val, dict):
-                    recursive_schema.append((str(var), vol.Schema(val)))
+                    recursive_schema.append((str(var), probatio.Schema(val)))
                 else:
                     current_schema[var] = val
 
             yield (
                 name,
-                vol.Schema(current_schema),
+                probatio.Schema(current_schema),
                 data,
                 last_config and not recursive_schema,
             )
@@ -370,7 +370,7 @@ class RecursiveDataFlow(RecursiveBaseFlow):
 
     @staticmethod
     def _remove_missing_optional_values(
-        data_schema: vol.Schema,
+        data_schema: probatio.Schema,
         step_data: dict[str, Any],
         user_input: dict[str, Any],
     ) -> None:
@@ -379,7 +379,7 @@ class RecursiveDataFlow(RecursiveBaseFlow):
             if name in user_input:
                 continue
             for key in data_schema.schema:
-                if key == name and isinstance(key, vol.Optional):
+                if key == name and isinstance(key, probatio.Optional):
                     step_data.pop(name)
                     break
 
@@ -461,19 +461,21 @@ class RecursiveDataFlow(RecursiveBaseFlow):
         raise AttributeError(f"{type(self).__name__!s} has no attribute {attr!r}")
 
     def suggested_values_from_default(
-        self, data_schema: vol.Schema | Mapping[str, Any] | section
+        self, data_schema: probatio.Schema | Mapping[str, Any] | section
     ) -> dict[str, Any]:
         """Generate suggested values from schema markers."""
         if isinstance(data_schema, section):
             data_schema = data_schema.schema
-        if isinstance(data_schema, vol.Schema):
+        if isinstance(data_schema, probatio.Schema):
             data_schema = data_schema.schema
 
         suggested_values: dict[str, Any] = {}
         for key, value in data_schema.items():  # type: ignore[union-attr]
-            if hasattr(key, "default") and not isinstance(key.default, vol.Undefined):
+            if hasattr(key, "default") and not isinstance(
+                key.default, probatio.Undefined
+            ):
                 suggested_values[str(key)] = key.default()
-            if isinstance(value, (vol.Schema, dict, section)):
+            if isinstance(value, (probatio.Schema, dict, section)):
                 nested_values = self.suggested_values_from_default(value)
                 if nested_values:
                     suggested_values[str(key)] = nested_values
@@ -649,7 +651,7 @@ class RecursiveConfigFlow(RecursiveDataFlow, ConfigFlow):
         def _func(obj: Any) -> Any:
             return getattr(obj, "__func__", obj)
 
-        subentry_schemas: dict[str, vol.Schema | None]
+        subentry_schemas: dict[str, probatio.Schema | None]
         if cls.subentries_schema is not None:
             subentry_schemas = dict(cls.subentries_schema)
         elif _func(cls.get_subentries) is not _func(RecursiveBaseFlow.get_subentries):
@@ -659,7 +661,7 @@ class RecursiveConfigFlow(RecursiveDataFlow, ConfigFlow):
 
         def subentry_factory(
             subentry_type: str,
-            schema: vol.Schema | None,
+            schema: probatio.Schema | None,
         ) -> type[ConfigSubentryFlow]:
             extra_attrs: dict[str, Any] = {}
             if schema is not None:
@@ -693,7 +695,6 @@ async def validate_data(
     flow.handler = config_entry.entry_id
     flow.context = ConfigFlowContext(
         source=SOURCE_RECONFIGURE,
-        show_advanced_options=True,
         entry_id=config_entry.entry_id,
     )
     flow.data = config_entry.data.copy()
@@ -708,7 +709,7 @@ async def validate_data(
             if err.description_placeholders
             else None,
         ) from err
-    except vol.MultipleInvalid as err:
+    except probatio.MultipleInvalid as err:
         raise HomeAssistantError(str(err)) from err
 
 
@@ -726,7 +727,6 @@ async def validate_options(
     flow.handler = config_entry.entry_id
     flow.context = ConfigFlowContext(
         source=SOURCE_RECONFIGURE,
-        show_advanced_options=True,
         entry_id=config_entry.entry_id,
     )
     flow.data = config_entry.data.copy()
@@ -741,7 +741,7 @@ async def validate_options(
             if err.description_placeholders
             else None,
         ) from err
-    except vol.MultipleInvalid as err:
+    except probatio.MultipleInvalid as err:
         raise HomeAssistantError(str(err)) from err
 
 
@@ -765,7 +765,6 @@ async def validate_subentry_data(
     flow.handler = (config_entry.entry_id, subentry.subentry_type)
     flow.context = SubentryFlowContext(
         source=SOURCE_RECONFIGURE,
-        show_advanced_options=True,
         entry_id=config_entry.entry_id,
         subentry_id=subentry.subentry_id,
     )
@@ -781,5 +780,5 @@ async def validate_subentry_data(
             if err.description_placeholders
             else None,
         ) from err
-    except vol.MultipleInvalid as err:
+    except probatio.MultipleInvalid as err:
         raise HomeAssistantError(str(err)) from err

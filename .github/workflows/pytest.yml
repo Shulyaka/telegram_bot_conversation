@@ -21,8 +21,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ha-version: ["hacs", "latest", "dev"]
-        python-version: ["3.14"]
+        include:
+          - ha-version: "hacs"
+            python-version: "3.14"
+          - ha-version: "latest"
+            python-version: "3.14"
+          - ha-version: "latest"
+            python-version: "3.15"
+          - ha-version: "dev"
+            python-version: "3.15"
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

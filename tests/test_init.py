@@ -2,10 +2,7 @@
 
 from unittest.mock import AsyncMock, patch
 
-from pytest_homeassistant_custom_component.common import (
-    MockConfigEntry,
-    async_mock_service,
-)
+from pytest_homeassistant.common import MockConfigEntry, async_mock_service
 
 from custom_components.telegram_bot_conversation import TelegramBotConversationHandler
 from custom_components.telegram_bot_conversation.const import (
@@ -154,7 +151,7 @@ async def test_new_command_clears_history_immediately(
     conversation_id = f"telegram_{chat_id}"
 
     with (
-        async_get_chat_session(hass, conversation_id) as session,
+        async_get_chat_session(hass, conversation_id, context=None) as session,
         async_get_chat_log(hass, session) as chat_log,
     ):
         chat_log.async_add_user_content(UserContent(content="Hello"))
@@ -178,7 +175,7 @@ async def test_new_command_clears_history_immediately(
     )
 
     with (
-        async_get_chat_session(hass, conversation_id) as session,
+        async_get_chat_session(hass, conversation_id, context=None) as session,
         async_get_chat_log(hass, session) as chat_log,
     ):
         assert [content.role for content in chat_log.content] == ["system"]

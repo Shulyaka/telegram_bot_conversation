@@ -18,9 +18,9 @@ import re
 from types import MappingProxyType
 from typing import Any
 
+import probatio
 from telegramify_markdown import entities_to_markdownv2, telegramify
 from telegramify_markdown.content import ContentType
-import voluptuous as vol
 
 from homeassistant.components.conversation.chat_log import async_subscribe_chat_logs
 from homeassistant.components.conversation.const import ChatLogEventType
@@ -242,6 +242,18 @@ class TelegramBotConversationHandler:
                 chat_id,
                 thread_id,
             )
+            return
+
+        if (
+            event_type == ChatLogEventType.CONTENT_ADDED
+            and (conversation := handler.conversations.get(thread_id))
+            and conversation.streamed_content is not None
+            and (content := data.get("content"))
+            and content.get("role") == "assistant"
+            and content.get("content") == conversation.streamed_content
+        ):
+            # Streamed content is committed by the delta listener.
+            conversation.streamed_content = None
             return
 
         def log_exceptions(task: Task[None]) -> None:
@@ -514,10 +526,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         DOMAIN,
         SERVICE_MARKDOWNIFY,
         markdownify,
-        schema=vol.Schema(
+        schema=probatio.Schema(
             {
-                vol.Required(ATTR_TEXT): cv.string,
-                vol.Optional(ATTR_PARSER, default=PARSER_MD2): vol.In(
+                probatio.Required(ATTR_TEXT): cv.string,
+                probatio.Optional(ATTR_PARSER, default=PARSER_MD2): probatio.In(
                     [PARSER_MD2, PARSER_PLAIN_TEXT]
                 ),
             }

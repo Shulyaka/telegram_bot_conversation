@@ -32,10 +32,6 @@ def bypass_setup_fixture():
         yield
 
 
-def test_test(hass):
-    """Workaround for https://github.com/MatthewFlamm/pytest-homeassistant-custom-component/discussions/160."""
-
-
 async def test_config_flow(hass: HomeAssistant, mock_telegram_config_entry) -> None:
     """Test a successful config flow."""
     # Init first step

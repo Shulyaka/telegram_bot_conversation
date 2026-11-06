@@ -98,6 +98,7 @@ from homeassistant.helpers.chat_session import (
 )
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.intent import IntentResponseType
+from homeassistant.helpers.llm import ToolResult
 from homeassistant.helpers.network import get_url
 from homeassistant.helpers.translation import async_get_cached_translations
 from homeassistant.util import dt as dt_util, language as language_util
@@ -232,12 +233,20 @@ class ConversationConfig:
 
     task: asyncio.Task[None] | None = None
     draft: AssistantContentDeltaDict | None = None
+    streamed_content: str | None = None
     delta_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
     content_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
     send_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
     receive_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
     draft_cancel: CALLBACK_TYPE | None = field(init=False, default=None)
     sent_drafts: dict[int, str] | None = field(init=False, default=None)
+
+    def update_streamed_content(self, delta: dict[str, Any]) -> None:
+        """Track streamed text before HA publishes the completed content."""
+        if "role" in delta:
+            self.streamed_content = "" if delta["role"] == "assistant" else None
+        if self.streamed_content is not None:
+            self.streamed_content += delta.get("content") or ""
 
 
 class TelegramChatHandler:
@@ -803,6 +812,9 @@ class TelegramChatHandler:
 
         thread_id = event.data.get(ATTR_MESSAGE_THREAD_ID) or 0
         conversation_id = self._get_conversation_id(thread_id)
+        current_conversation = self.conversations.setdefault(
+            thread_id, ConversationConfig()
+        )
 
         error: BaseException | None = None
         extra_system_prompt = self.extra_prompt
@@ -810,6 +822,7 @@ class TelegramChatHandler:
         @callback
         def chat_log_delta_listener(chat_log: ChatLog, delta: dict[str, Any]) -> None:
             """Handle chat log delta."""
+            current_conversation.update_streamed_content(delta)
 
             def log_exceptions(task: asyncio.Task[None]) -> None:
                 """Log exceptions from the delta listener."""
@@ -835,15 +848,23 @@ class TelegramChatHandler:
                 "async_chat_log_delta_listener",
             ).add_done_callback(log_exceptions)
 
-        with (
-            async_get_chat_session(self.hass, conversation_id) as session,
-            async_get_chat_log(
-                self.hass,
-                session,
-                chat_log_delta_listener=chat_log_delta_listener,
-            ) as chat_log,
-        ):
+        def reset_streamed_content() -> None:
+            """Clear unfinished streamed content once the turn has ended."""
+            current_conversation.streamed_content = None
+
+        with contextlib.ExitStack() as stack:
+            stack.callback(reset_streamed_content)
             try:
+                session = stack.enter_context(
+                    async_get_chat_session(self.hass, conversation_id, context=context)
+                )
+                chat_log = stack.enter_context(
+                    async_get_chat_log(
+                        self.hass,
+                        session,
+                        chat_log_delta_listener=chat_log_delta_listener,
+                    )
+                )
                 if event.data.get(ATTR_FILE_ID):
                     file_path = Path(
                         (
@@ -962,6 +983,8 @@ class TelegramChatHandler:
                     input_text = event.data.get(ATTR_TEXT) or ""
                     chat_log.async_add_user_content(UserContent(input_text))
             except Exception as err:
+                # Report input errors here without HA adding a second error reply.
+                stack.close()
                 message = async_translate_message(
                     self.hass,
                     translation_key="conversation_error",
@@ -1017,7 +1040,7 @@ class TelegramChatHandler:
             and content
             and not (
                 chat_log.content[-1].role == "assistant"
-                and chat_log.content[-1].content == content
+                and chat_log.content[-1].content in (content, f"Error: {content}")
             )
         ):
             await self.async_handle_chat_log_event(
@@ -1206,12 +1229,15 @@ class TelegramChatHandler:
                                                 or HOME_ASSISTANT_AGENT,
                                                 tool_call_id=tool_call.id,
                                                 tool_name=tool_call.tool_name,
-                                                tool_result={
-                                                    "error": "asyncio.CancelledError: "
-                                                    "Conversation interrupted before "
-                                                    "tool call could be responded to. "
-                                                    "Please try again."
-                                                },
+                                                result=ToolResult(
+                                                    data={
+                                                        "error": "asyncio.CancelledError: "
+                                                        "Conversation interrupted before "
+                                                        "tool call could be responded to. "
+                                                        "Please try again."
+                                                    },
+                                                    error=True,
+                                                ),
                                             )
                                         )
                             break
@@ -1540,8 +1566,11 @@ class TelegramChatHandler:
             """Add messages sent from outside of the integration to the chat log."""
             title = service_data.get(ATTR_TITLE)
             message = service_data.get(ATTR_MESSAGE, "")
+            # A notification does not act for the user who owns the conversation.
             with (
-                async_get_chat_session(self.hass, conversation_id) as session,
+                async_get_chat_session(
+                    self.hass, conversation_id, context=None
+                ) as session,
                 async_get_chat_log(self.hass, session) as chat_log,
             ):
                 chat_log.async_add_assistant_content_without_tools(
@@ -1595,6 +1624,7 @@ class TelegramChatHandler:
             task_name=DOMAIN,
             entity_id=self.config.get(CONF_AI_TASK),
             instructions=prompt,
+            context=context,
         )  # type: ignore[assignment]
 
         media = await async_resolve_media(self.hass, result["media_source_id"], None)

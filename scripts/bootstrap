@@ -59,60 +59,43 @@ case "$HA_VERSION" in
   *[0-9]a[0-9]*|*[0-9]b[0-9]*|*[0-9]rc[0-9]*)
     set -- "$@" --prerelease allow
     HA_REQUIREMENT="homeassistant==${HA_VERSION}"
+    PYTEST_HA_REQUIREMENT="pytest-homeassistant==${HA_VERSION}"
     ;;
   # git ref: contains characters other than digits and dots
   *[!0-9.]*)
     HA_REQUIREMENT="homeassistant @ git+https://github.com/home-assistant/core.git@${HA_VERSION}"
+    PYTEST_HA_REQUIREMENT="pytest-homeassistant @ git+https://github.com/home-assistant/core.git@${HA_VERSION}#subdirectory=packages/pytest-homeassistant"
+    set -- "$@" --reinstall-package homeassistant --reinstall-package pytest-homeassistant
     ;;
   # release: digits and dots only
-  *) HA_REQUIREMENT="homeassistant==${HA_VERSION}" ;;
+  *)
+    HA_REQUIREMENT="homeassistant==${HA_VERSION}"
+    PYTEST_HA_REQUIREMENT="pytest-homeassistant==${HA_VERSION}"
+    ;;
 esac
 
 python3 scripts/collect-integration-requirements "$HA_VERSION" > "$tmpdir/integration-requirements.txt"
-printf '%s\n' "$HA_REQUIREMENT" > "$tmpdir/ha-requirements.txt"
+printf '%s\n' "$HA_REQUIREMENT" "$PYTEST_HA_REQUIREMENT" > "$tmpdir/ha-requirements.txt"
 printf -- '-r %s\n' "$tmpdir/integration-requirements.txt" >> "$tmpdir/ha-requirements.txt"
-
-# Keep project requirements separate so the fallback can resolve PHACC independently.
-printf -- '-r %s\n' "$PWD/requirements.txt" > "$tmpdir/project-requirements.txt"
-SPLIT_INSTALL=false
-
-install_ha() {
-  uv pip install "$@" --constraint "$tmpdir/homeassistant/package_constraints.txt" --constraint "$tmpdir/constraints_all.txt" --requirement "$tmpdir/ha-requirements.txt"
-}
-
-split_install() {
-  echo "Warning: Dependencies could not be resolved together. Installing project requirements first, then Home Assistant ${HA_VERSION} and its integration requirements for a best-effort environment."
-  uv pip install "$@" --requirement "$tmpdir/project-requirements.txt"
-  install_ha "$@"
-}
 
 if [ "$FULL_INSTALL" = true ]; then
   curl -fsSL "${HA_CORE_BASE_URL}/requirements.txt" -o "$tmpdir/requirements.txt"  # required by requirements_all.txt
   curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_pre_commit.txt" -o "$tmpdir/requirements_test_pre_commit.txt"  # required by requirements_test.txt
   curl -fsSL "${HA_CORE_BASE_URL}/requirements_test.txt" -o "$tmpdir/requirements_test.txt"
   printf -- '-r %s\n' "$tmpdir/requirements_all.txt" "$tmpdir/requirements_test.txt" >> "$tmpdir/ha-requirements.txt"
-else
-  # Resolve without modifying the environment, then use the matching PHACC tools.
-  if ! uv pip compile "$@" --constraint "$tmpdir/homeassistant/package_constraints.txt" --constraint "$tmpdir/constraints_all.txt" --no-header --no-annotate --output-file "$tmpdir/resolved.txt" requirements.txt "$tmpdir/ha-requirements.txt" > /dev/null; then
-    SPLIT_INSTALL=true
-    uv pip compile "$@" --no-header --no-annotate --output-file "$tmpdir/resolved.txt" requirements.txt > /dev/null
-  fi
-  PHACC_VERSION=$(sed -n 's/^pytest-homeassistant-custom-component==//p' "$tmpdir/resolved.txt")
-  if [ -z "$PHACC_VERSION" ]; then
-    echo "Error: Could not determine pytest-homeassistant-custom-component version. Please resolve dependencies." >&2
-    exit 1
-  fi
-  echo "Fetching pytest-homeassistant-custom-component dependencies for version ${PHACC_VERSION}..."
-  PHACC_BASE_URL="https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/${PHACC_VERSION}"
-  curl -fsSL "${PHACC_BASE_URL}/requirements_dev.txt" -o "$tmpdir/requirements_dev.txt"
-  printf -- '-r %s\n' "$tmpdir/requirements_dev.txt" >> "$tmpdir/project-requirements.txt"
-  printf '%s\n' "pytest-homeassistant-custom-component==${PHACC_VERSION}" >> "$tmpdir/project-requirements.txt"
 fi
 
-if [ "$SPLIT_INSTALL" = true ]; then
-  split_install "$@"
-elif ! install_ha "$@" --requirement "$tmpdir/project-requirements.txt"; then
-  split_install "$@"
+uv pip install "$@" \
+  --constraint "$tmpdir/homeassistant/package_constraints.txt" \
+  --constraint "$tmpdir/constraints_all.txt" \
+  --requirement requirements.txt \
+  --requirement "$tmpdir/ha-requirements.txt"
+
+# The two test plugins provide overlapping fixtures and cannot coexist.
+if [ -z "${VIRTUAL_ENV:-}" ]; then
+  uv pip uninstall --system pytest-homeassistant-custom-component
+else
+  uv pip uninstall pytest-homeassistant-custom-component
 fi
 
 echo "==> Installing prek hooks..."
