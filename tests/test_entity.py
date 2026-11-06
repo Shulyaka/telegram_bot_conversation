@@ -2,14 +2,19 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable, Generator
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from pytest_homeassistant.common import async_capture_events, async_mock_service
+from telegram.constants import InputMediaType
 
 from custom_components.telegram_bot_conversation.const import (
+    CONF_ATTACHMENTS,
     CONF_CONVERSATION_AGENT,
+    CONF_MERMAID,
+    CONF_TMPDIR,
     DOMAIN,
 )
 from custom_components.telegram_bot_conversation.entity import (
@@ -19,6 +24,7 @@ from custom_components.telegram_bot_conversation.entity import (
 from homeassistant.components import conversation
 from homeassistant.components.telegram_bot.const import (
     ATTR_CALLBACK_QUERY_ID,
+    ATTR_CAPTION,
     ATTR_CHAT_ACTION,
     ATTR_CHAT_ID,
     ATTR_DISABLE_WEB_PREV,
@@ -28,6 +34,7 @@ from homeassistant.components.telegram_bot.const import (
     ATTR_FILE_PATH,
     ATTR_IS_BIG,
     ATTR_KEYBOARD_INLINE,
+    ATTR_MEDIA_TYPE,
     ATTR_MESSAGE,
     ATTR_MESSAGE_ID,
     ATTR_MESSAGE_TAG,
@@ -40,13 +47,22 @@ from homeassistant.components.telegram_bot.const import (
     DOMAIN as TELEGRAM_DOMAIN,
     SERVICE_ANSWER_CALLBACK_QUERY,
     SERVICE_DOWNLOAD_FILE,
+    SERVICE_EDIT_MESSAGE_MEDIA,
     SERVICE_EDIT_REPLYMARKUP,
     SERVICE_SEND_CHAT_ACTION,
+    SERVICE_SEND_DOCUMENT,
     SERVICE_SEND_MESSAGE,
+    SERVICE_SEND_MESSAGE_DRAFT,
     SERVICE_SEND_PHOTO,
     SERVICE_SET_MESSAGE_REACTION,
 )
-from homeassistant.core import Context, Event, HomeAssistant
+from homeassistant.core import (
+    Context,
+    Event,
+    HomeAssistant,
+    ServiceCall,
+    SupportsResponse,
+)
 from homeassistant.exceptions import HomeAssistantError, Unauthorized
 from homeassistant.helpers.chat_session import async_get_chat_session
 from homeassistant.helpers.llm import ToolInput
@@ -459,6 +475,110 @@ async def test_send_message_splits_long_text(
     assert calls[0].data[ATTR_DISABLE_WEB_PREV] is True
     assert calls[1].data[ATTR_DISABLE_WEB_PREV] is False
     assert calls[0].data[ATTR_MESSAGE_TAG] == DOMAIN
+
+
+@pytest.mark.parametrize("media", ["file", "photo"])
+@pytest.mark.parametrize("edit_draft", [False, True])
+async def test_send_message_media_and_cleanup(
+    hass: HomeAssistant,
+    mock_config_entry,
+    tmp_path: Path,
+    media: str,
+    edit_draft: bool,
+) -> None:
+    """Send extracted files and diagrams, then remove their temporary files."""
+    chat_handler, _ = _first_chat_handler(mock_config_entry)
+    chat_handler.config.update(
+        {CONF_ATTACHMENTS: 1, CONF_MERMAID: True, CONF_TMPDIR: tmp_path}
+    )
+    if edit_draft:
+        current_conversation = ConversationConfig()
+        current_conversation.sent_drafts = {456: "Previous draft"}
+        chat_handler.conversations[0] = current_conversation
+
+    is_photo = media == "photo"
+    message = (
+        "```mermaid\ngraph TD\nA-->B\n```"
+        if is_photo
+        else '```python\nprint("hello")\n```'
+    )
+    service = (
+        SERVICE_EDIT_MESSAGE_MEDIA
+        if edit_draft
+        else SERVICE_SEND_PHOTO
+        if is_photo
+        else SERVICE_SEND_DOCUMENT
+    )
+    calls: list[ServiceCall] = []
+    files: list[Path] = []
+    contents: list[bytes] = []
+
+    async def capture_media(call: ServiceCall) -> dict[str, list[dict[str, int]]]:
+        """Read the temporary attachment while the service is sending it."""
+        file = Path(call.data[ATTR_FILE])
+        calls.append(call)
+        files.append(file)
+        contents.append(await hass.async_add_executor_job(file.read_bytes))
+        return {"chats": []}
+
+    hass.services.async_register(
+        TELEGRAM_DOMAIN,
+        service,
+        capture_media,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    with patch(
+        "telegramify_markdown.mermaid.render_mermaid",
+        AsyncMock(return_value=(BytesIO(b"rendered diagram"), "")),
+    ):
+        await chat_handler.send_message(message=message, context=Context())
+
+    assert len(calls) == 1
+    assert contents == [b"rendered diagram" if is_photo else b'print("hello")']
+    assert files[0].suffix == (".webp" if is_photo else ".py")
+    assert not files[0].exists()
+    assert calls[0].data[ATTR_PARSER] == "markdownv2"
+    if is_photo:
+        assert (
+            calls[0]
+            .data[ATTR_CAPTION]
+            .startswith("[Edit on mermaid\\.live](https://mermaid.live/edit/#pako:")
+        )
+    else:
+        assert calls[0].data[ATTR_CAPTION] == ""
+    if edit_draft:
+        assert calls[0].data[ATTR_MESSAGE_ID] == 456
+        assert calls[0].data[ATTR_MEDIA_TYPE] == (
+            InputMediaType.PHOTO if is_photo else InputMediaType.DOCUMENT
+        )
+
+
+@pytest.mark.parametrize(
+    "message",
+    ['```python\nprint("hello")\n```', "```mermaid\ngraph TD\nA-->B\n```"],
+)
+async def test_send_message_draft_keeps_code_inline(
+    hass: HomeAssistant,
+    mock_config_entry,
+    tmp_path: Path,
+    message: str,
+) -> None:
+    """Drafts retain code and Mermaid text even when media features are enabled."""
+    chat_handler, _ = _first_chat_handler(mock_config_entry)
+    chat_handler.config.update(
+        {CONF_ATTACHMENTS: 1, CONF_MERMAID: True, CONF_TMPDIR: tmp_path}
+    )
+    chat_handler.conversations[0] = ConversationConfig(draft={"content": message})
+    calls = async_mock_service(hass, TELEGRAM_DOMAIN, SERVICE_SEND_MESSAGE_DRAFT)
+
+    with patch("telegramify_markdown.mermaid.render_mermaid") as render_mermaid:
+        await chat_handler.send_message(context=Context(), draft=True)
+
+    render_mermaid.assert_not_called()
+    assert len(calls) == 1
+    assert calls[0].data[ATTR_MESSAGE] == message
+    assert calls[0].data[ATTR_PARSER] == "markdownv2"
+    assert not list(tmp_path.iterdir())
 
 
 async def test_text_attachment_is_inserted_inline(

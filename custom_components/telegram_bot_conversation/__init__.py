@@ -20,7 +20,7 @@ from typing import Any
 
 import probatio
 from telegramify_markdown import entities_to_markdownv2, telegramify
-from telegramify_markdown.content import ContentType
+from telegramify_markdown.content import Text
 
 from homeassistant.components.conversation.chat_log import async_subscribe_chat_logs
 from homeassistant.components.conversation.const import ChatLogEventType
@@ -518,7 +518,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                     render_mermaid=False,
                     min_file_lines=0,
                 )
-                if item.content_type == ContentType.TEXT
+                if isinstance(item, Text)
             ]
         }
 

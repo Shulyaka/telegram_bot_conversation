@@ -16,7 +16,7 @@ import aiofiles
 import pyogg
 from telegram.constants import InputMediaType
 from telegramify_markdown import entities_to_markdownv2, markdownify, telegramify
-from telegramify_markdown.content import ContentType
+from telegramify_markdown.content import File, Photo, Text
 
 from homeassistant.components import stt, tts
 from homeassistant.components.ai_task import async_generate_image
@@ -455,21 +455,18 @@ class TelegramChatHandler:
                 ) as watcher:
                     # All messages but the last are real messages
                     for item in items[:-1] if draft and self.chat_id > 0 else items:
-                        if item.content_type == ContentType.TEXT:
+                        if isinstance(item, Text):
                             text = entities_to_markdownv2(item.text, item.entities)
-                        elif item.content_type == ContentType.PHOTO:
+                        elif isinstance(item, Photo):
                             caption_md = entities_to_markdownv2(
                                 item.caption_text, item.caption_entities
                             )
                             text = "Drawing " + caption_md
-                        elif item.content_type == ContentType.FILE:
+                        else:
                             caption_md = entities_to_markdownv2(
                                 item.caption_text, item.caption_entities
                             )
                             text = "Writing " + caption_md
-                        else:
-                            continue
-
                         text = re.sub(
                             r"🖼(\[[^\]]*\]\(tg://time\?)", "!\\1", text
                         )  # Restore time links
@@ -524,7 +521,7 @@ class TelegramChatHandler:
                                     )
                                 raise StopIteration  # noqa: TRY301
 
-                            if draft or item.content_type == ContentType.TEXT:
+                            if draft or isinstance(item, Text):
                                 LOGGER.debug("Editing message with updated text")
                                 await self.hass.services.async_call(
                                     TELEGRAM_DOMAIN,
@@ -543,10 +540,7 @@ class TelegramChatHandler:
                                     context=context,
                                 )
                                 LOGGER.debug("Editing message done")
-                            elif item.content_type in (
-                                ContentType.PHOTO,
-                                ContentType.FILE,
-                            ):
+                            elif isinstance(item, (Photo, File)):
                                 LOGGER.debug("Editing message with media")
                                 await self.hass.services.async_call(
                                     TELEGRAM_DOMAIN,
@@ -567,7 +561,7 @@ class TelegramChatHandler:
                                         ),
                                         ATTR_MESSAGE_ID: message_id,
                                         ATTR_MEDIA_TYPE: InputMediaType.PHOTO
-                                        if item.content_type == ContentType.PHOTO
+                                        if isinstance(item, Photo)
                                         else InputMediaType.DOCUMENT,
                                         CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
                                         ATTR_PARSER: "markdownv2",
@@ -585,7 +579,7 @@ class TelegramChatHandler:
                             current_conversation.sent_drafts.update({message_id: text})
                         except StopIteration:
                             # Message was not sent yet, create.
-                            if draft or item.content_type == ContentType.TEXT:
+                            if draft or isinstance(item, Text):
                                 LOGGER.debug("Sending text message")
                                 item_messages: dict[str, list[dict[str, Any]]] = (
                                     await self.hass.services.async_call(
@@ -610,15 +604,12 @@ class TelegramChatHandler:
                                     or {"chats": []}
                                 )
                                 LOGGER.debug("Sending text message done")
-                            elif item.content_type in (
-                                ContentType.PHOTO,
-                                ContentType.FILE,
-                            ):
+                            elif isinstance(item, (Photo, File)):
                                 LOGGER.debug("Sending media")
                                 item_messages = await self.hass.services.async_call(
                                     TELEGRAM_DOMAIN,
                                     SERVICE_SEND_PHOTO
-                                    if item.content_type == ContentType.PHOTO
+                                    if isinstance(item, Photo)
                                     else SERVICE_SEND_DOCUMENT,
                                     {
                                         ATTR_FILE: (
@@ -686,9 +677,13 @@ class TelegramChatHandler:
 
                     current_conversation.sent_drafts.pop(message_id, None)
 
-                if draft and self.chat_id > 0 and items:
-                    item = items[-1]
-                    text = entities_to_markdownv2(item.text, item.entities)
+                if (
+                    draft
+                    and self.chat_id > 0
+                    and items
+                    and isinstance(draft_item := items[-1], Text)
+                ):
+                    text = entities_to_markdownv2(draft_item.text, draft_item.entities)
 
                     LOGGER.debug("Sending draft")
                     await self.hass.services.async_call(
