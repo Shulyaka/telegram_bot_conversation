@@ -6,7 +6,7 @@ from typing import Any, Literal
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 from telegram import AcceptedGiftTypes, Bot, Chat, ChatFullInfo, Message, Update, User
 from telegram.constants import ChatType
 from telegram.ext import Application
@@ -29,6 +29,7 @@ from homeassistant.components import conversation
 from homeassistant.components.conversation.agent_manager import get_agent_manager
 from homeassistant.components.conversation.models import AbstractConversationAgent
 from homeassistant.components.telegram_bot.const import (
+    ATTR_MEDIA,
     ATTR_PARSER,
     CONF_ALLOWED_CHAT_IDS,
     CONF_API_ENDPOINT,
@@ -43,19 +44,6 @@ from homeassistant.const import CONF_API_KEY, CONF_PLATFORM, MATCH_ALL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.chat_session import async_get_chat_session
 from homeassistant.setup import async_setup_component
-
-try:
-    from homeassistant.components.telegram_bot.const import ATTR_MEDIA
-except ImportError:
-    ATTR_MEDIA = None
-
-
-# This fixture enables loading custom integrations in all tests.
-# Remove to enable selective use of this fixture
-@pytest.fixture(autouse=True)
-def auto_enable_custom_integrations(enable_custom_integrations):
-    """Enable custom integrations."""
-    return
 
 
 # This fixture is used to prevent HomeAssistant from attempting to create and dismiss
@@ -291,7 +279,9 @@ class MockConversationStreamingAgent(AbstractConversationAgent):
     ) -> conversation.ConversationResult:
         """Stream a mocked response into the chat log."""
         with (
-            async_get_chat_session(self.hass, user_input.conversation_id) as session,
+            async_get_chat_session(
+                self.hass, user_input.conversation_id, context=user_input.context
+            ) as session,
             conversation.async_get_chat_log(self.hass, session, user_input) as chat_log,
         ):
             try:

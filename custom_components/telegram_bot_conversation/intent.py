@@ -2,7 +2,7 @@
 
 from typing import Any, cast
 
-import voluptuous as vol
+import probatio
 
 from homeassistant.components.telegram_bot.const import (
     ATTR_CHAT_ID,
@@ -236,8 +236,8 @@ class GenerateImageHandler(BaseTelegramBotConversationIntentHandler):
     method = "handle_generate_image_intent"
 
     @property
-    def slot_schema(self) -> dict[vol.Marker, Any] | None:
+    def slot_schema(self) -> dict[probatio.Marker, Any] | None:
         """Return a slot schema."""
         return {
-            vol.Required("prompt"): intent.non_empty_string,
+            probatio.Required("prompt"): intent.non_empty_string,
         }

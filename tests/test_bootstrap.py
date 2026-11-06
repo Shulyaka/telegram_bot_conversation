@@ -32,39 +32,38 @@ if name == "python3":
         def manifest(version, domain):
             assert domain == "conversation"
             return {"requirements": [
-                "hassil==3.5.0" if version == "2026.5.0" else "hassil==3.12.0"
+                "hassil==3.12.0" if version == "2026.11.0" else "hassil==3.13.0"
             ]}
         main.__globals__["load_ha_manifest"] = manifest
         sys.argv = args
         sys.exit(main())
     os.execv(sys.executable, [sys.executable, *args])
 elif name == "curl":
+    if os.environ.get("FAIL_DOWNLOAD"):
+        sys.exit(1)
     url = args[1]
     if url == "https://pypi.org/pypi/homeassistant/json":
-        print(json.dumps({"info": {"version": "2026.9.1"}}))
+        print(json.dumps({"info": {"version": "2026.11.1"}}))
     else:
         destination = Path(args[args.index("-o") + 1])
-        destination.write_text("mypy==1.0\n" if url.endswith("requirements_dev.txt") else "")
+        contents = {
+            "requirements_all.txt": "-r requirements.txt\nall-integrations==1.0\n",
+            "requirements.txt": "upstream-core==1.0\n",
+            "requirements_test.txt": "-r requirements_test_pre_commit.txt\nupstream-tests==1.0\n",
+            "requirements_test_pre_commit.txt": "upstream-lint==1.0\n",
+            "package_constraints.txt": "",
+        }
+        destination.write_text(contents[destination.name])
 elif name == "uv":
-    if args[1] == "compile":
-        combined = Path(args[-1]).name == "ha-requirements.txt"
-        if os.environ.get("FAIL_COMPILE") or (combined and os.environ.get("CONFLICT_COMPILE")):
-            sys.exit(1)
-        contents = ""
-        contents += "pytest-homeassistant-custom-component==0.13.329\n"
-        Path(args[args.index("--output-file") + 1]).write_text(contents)
-    elif args[1] == "install":
-        inputs = [Path(args[index + 1]).name for index, arg in enumerate(args) if arg == "--requirement"]
-        combined = "project-requirements.txt" in inputs and "ha-requirements.txt" in inputs
-        if (combined and os.environ.get("CONFLICT_INSTALL")) or os.environ.get("FAIL_INSTALL"):
-            sys.exit(1)
-        if inputs == ["ha-requirements.txt"] and os.environ.get("FAIL_HA_INSTALL"):
+    if args[:2] == ["pip", "install"]:
+        if os.environ.get("FAIL_INSTALL"):
             sys.exit(1)
         contents = []
         def read_requirements(path):
-            for line in Path(path).read_text().splitlines():
+            path = Path(path)
+            for line in path.read_text().splitlines():
                 if line.startswith("-r "):
-                    read_requirements(line[3:])
+                    read_requirements(path.parent / line[3:])
                 elif line:
                     contents.append(line)
         for index, arg in enumerate(args):
@@ -72,9 +71,7 @@ elif name == "uv":
                 read_requirements(args[index + 1])
         with open(os.environ["INSTALLED_REQUIREMENTS"], "a") as installed:
             installed.write("\n".join(contents) + "\n")
-        with open(os.environ["BOOTSTRAP_LOG"], "a") as log:
-            log.write(json.dumps(["installed", *contents]) + "\n")
-    else:
+    elif args[:2] != ["pip", "uninstall"]:
         sys.exit(2)
 """
 
@@ -86,8 +83,8 @@ def bootstrap(tmp_path: Path):
     (project / "scripts").mkdir(parents=True)
     for name in ("bootstrap", "collect-integration-requirements"):
         shutil.copy2(REPO_ROOT / "scripts" / name, project / "scripts" / name)
-    (project / "requirements.txt").write_text("pytest-homeassistant-custom-component\n")
-    (project / "hacs.json").write_text('{"homeassistant": "2026.5.0"}')
+    (project / "requirements.txt").write_text("pytest-homeassistant\n")
+    (project / "hacs.json").write_text('{"homeassistant": "2026.11.0"}')
     component = project / "custom_components" / "custom"
     component.mkdir(parents=True)
     (component / "manifest.json").write_text('{"dependencies": ["conversation"]}')
@@ -120,7 +117,11 @@ def bootstrap(tmp_path: Path):
             text=True,
             check=False,
         )
-        commands = [json.loads(line) for line in log.read_text().splitlines()]
+        commands = (
+            [json.loads(line) for line in log.read_text().splitlines()]
+            if log.exists()
+            else []
+        )
         requirements = installed.read_text() if installed.exists() else ""
         assert not list(temporary.iterdir())
         return result, commands, requirements
@@ -128,94 +129,118 @@ def bootstrap(tmp_path: Path):
     return run
 
 
-@pytest.mark.parametrize("version", ["hacs", "latest", "dev", "2026.9.0b6"])
-def test_bootstrap_version(bootstrap, version: str) -> None:
-    """Install selected integration requirements once, after a successful resolve."""
+@pytest.mark.parametrize(
+    ("version", "selected"),
+    [
+        ("hacs", "2026.11.0"),
+        ("latest", "2026.11.1"),
+        ("2026.11.0", "2026.11.0"),
+        ("2026.12.0b1", "2026.12.0b1"),
+    ],
+)
+def test_bootstrap_version(bootstrap, version: str, selected: str) -> None:
+    """Install matching HA and test packages together with integration requirements."""
     result, commands, requirements = bootstrap(HA_VERSION=version)
     assert result.returncode == 0, result.stderr
-    expected = "3.5.0" if version == "hacs" else "3.12.0"
+    assert f"homeassistant=={selected}" in requirements.splitlines()
+    assert f"pytest-homeassistant=={selected}" in requirements.splitlines()
+    expected = "3.12.0" if selected == "2026.11.0" else "3.13.0"
     assert f"hassil=={expected}" in requirements
     uv = [command for command in commands if command[0] == "uv"]
-    assert [command[2] for command in uv] == ["compile", "install"]
-    assert "pytest-homeassistant-custom-component==0.13.329" in requirements
-    assert all("--override" not in command for command in uv)
-    assert all(
-        ("--prerelease" in command) == (version == "2026.9.0b6") for command in uv
+    assert [command[2] for command in uv] == ["install", "uninstall"]
+    assert uv[0].count("--constraint") == 2
+    assert "--system" in uv[0]
+    assert "--override" not in uv[0]
+    assert ("--prerelease" in uv[0]) == (version == "2026.12.0b1")
+    assert uv[1] == [
+        "uv",
+        "pip",
+        "uninstall",
+        "--system",
+        "pytest-homeassistant-custom-component",
+    ]
+    assert not any(
+        "requirements_dev.txt" in arg for command in commands for arg in command
     )
+    assert commands[-2:] == [["pre-commit", "uninstall"], ["prek", "install"]]
+
+
+def test_bootstrap_default(bootstrap) -> None:
+    """Use the HACS minimum when no version override is supplied."""
+    result, _, requirements = bootstrap()
+    assert result.returncode == 0, result.stderr
+    assert "homeassistant==2026.11.0" in requirements.splitlines()
+    assert "pytest-homeassistant==2026.11.0" in requirements.splitlines()
+
+
+@pytest.mark.parametrize("version", ["dev", "feature/test"])
+def test_bootstrap_git_ref(bootstrap, version: str) -> None:
+    """Build both packages from the selected monorepo ref and refresh cached builds."""
+    result, commands, requirements = bootstrap(HA_VERSION=version)
+    assert result.returncode == 0, result.stderr
+    source = f"git+https://github.com/home-assistant/core.git@{version}"
+    assert f"homeassistant @ {source}" in requirements.splitlines()
+    assert (
+        f"pytest-homeassistant @ {source}#subdirectory=packages/pytest-homeassistant"
+        in requirements.splitlines()
+    )
+    uv = [command for command in commands if command[:3] == ["uv", "pip", "install"]]
+    assert len(uv) == 1
+    refreshed = [
+        uv[0][index + 1]
+        for index, arg in enumerate(uv[0])
+        if arg == "--reinstall-package"
+    ]
+    assert set(refreshed) == {"homeassistant", "pytest-homeassistant"}
+    assert "hassil==3.13.0" in requirements
+
+
+def test_bootstrap_virtualenv(bootstrap, tmp_path: Path) -> None:
+    """Install into an active virtual environment without requesting a system install."""
+    result, commands, _ = bootstrap(VIRTUAL_ENV=str(tmp_path / "venv"))
+    assert result.returncode == 0, result.stderr
+    uv = [command for command in commands if command[0] == "uv"]
+    assert all("--system" not in command for command in uv)
+    assert uv[1] == ["uv", "pip", "uninstall", "pytest-homeassistant-custom-component"]
 
 
 def test_full_bootstrap(bootstrap) -> None:
     """Full setup still includes the manifest requirements and upstream files."""
     result, commands, requirements = bootstrap("--full")
     assert result.returncode == 0, result.stderr
-    assert "hassil==3.5.0" in requirements
-    assert [command[2] for command in commands if command[0] == "uv"] == ["install"]
+    assert "hassil==3.12.0" in requirements
+    assert "all-integrations==1.0" in requirements
+    assert "upstream-core==1.0" in requirements
+    assert "upstream-tests==1.0" in requirements
+    assert "upstream-lint==1.0" in requirements
+    assert "pytest-homeassistant==2026.11.0" in requirements
+    assert [command[2] for command in commands if command[0] == "uv"] == [
+        "install",
+        "uninstall",
+    ]
     urls = [command[2] for command in commands if command[0] == "curl"]
-    assert any(url.endswith("/requirements_test.txt") for url in urls)
+    for filename in (
+        "requirements.txt",
+        "requirements_test.txt",
+        "requirements_test_pre_commit.txt",
+    ):
+        assert any(url.endswith(f"/{filename}") for url in urls)
 
 
-@pytest.mark.parametrize("failure", ["FAIL_COMPILE", "FAIL_INSTALL", "FAIL_MANIFEST"])
-def test_bootstrap_failure(bootstrap, failure: str) -> None:
-    """Stop when neither resolution strategy works or required input is missing."""
-    result, commands, _ = bootstrap(**{failure: "1"})
+@pytest.mark.parametrize("arguments", [(), ("--full",)])
+@pytest.mark.parametrize("failure", ["FAIL_DOWNLOAD", "FAIL_INSTALL", "FAIL_MANIFEST"])
+def test_bootstrap_failure(bootstrap, arguments: tuple[str, ...], failure: str) -> None:
+    """Abort on missing inputs or dependency conflicts without retrying installations."""
+    result, commands, _ = bootstrap(*arguments, **{failure: "1"})
     assert result.returncode != 0
     assert not any(command[0] in {"pre-commit", "prek"} for command in commands)
-    installations = [
-        command for command in commands if command[:3] == ["uv", "pip", "install"]
-    ]
-    assert len(installations) == (2 if failure == "FAIL_INSTALL" else 0)
-
-
-@pytest.mark.parametrize("version", ["hacs", "latest", "dev"])
-@pytest.mark.parametrize("conflict", ["CONFLICT_COMPILE", "CONFLICT_INSTALL"])
-def test_split_install(bootstrap, version: str, conflict: str) -> None:
-    """Resolve PHACC independently, then install the selected HA dependencies last."""
-    result, commands, _ = bootstrap(HA_VERSION=version, **{conflict: "1"})
-    assert result.returncode == 0, result.stderr
-    assert "best-effort environment" in result.stdout
-    installed = [command[1:] for command in commands if command[0] == "installed"]
-    assert len(installed) == 2
-    assert "pytest-homeassistant-custom-component==0.13.329" in installed[0]
-    assert "mypy==1.0" in installed[0]
-    assert not any("pytest-homeassistant" in item for item in installed[1])
-    selected = "2026.5.0" if version == "hacs" else "2026.9.1"
-    expected = (
-        "homeassistant @ git+https://github.com/home-assistant/core.git@dev"
-        if version == "dev"
-        else f"homeassistant=={selected}"
-    )
-    assert expected in installed[1]
-    assert f"hassil=={'3.5.0' if version == 'hacs' else '3.12.0'}" in installed[1]
     uv = [command for command in commands if command[0] == "uv"]
-    assert "--constraint" not in uv[-2]
-    assert "--constraint" in uv[-1]
-    if conflict == "CONFLICT_COMPILE":
-        assert [command[2] for command in uv] == [
-            "compile",
-            "compile",
-            "install",
-            "install",
-        ]
-        assert "--constraint" not in uv[1]
-    assert commands[-2:] == [["pre-commit", "uninstall"], ["prek", "install"]]
+    assert len(uv) == (1 if failure == "FAIL_INSTALL" else 0)
 
 
-def test_full_split_install(bootstrap) -> None:
-    """Full setup also retries independently when the combined install conflicts."""
-    result, commands, requirements = bootstrap("--full", CONFLICT_INSTALL="1")
-    assert result.returncode == 0, result.stderr
-    assert "hassil==3.5.0" in requirements
-    installs = [
-        command for command in commands if command[:3] == ["uv", "pip", "install"]
-    ]
-    assert len(installs) == 3
-    assert "--constraint" not in installs[1]
-    assert "--constraint" in installs[2]
-    assert commands[-1] == ["prek", "install"]
-
-
-def test_split_ha_install_failure(bootstrap) -> None:
-    """A failed HA install after the fallback must still report failure."""
-    result, commands, _ = bootstrap(CONFLICT_COMPILE="1", FAIL_HA_INSTALL="1")
-    assert result.returncode != 0
-    assert not any(command[0] in {"pre-commit", "prek"} for command in commands)
+def test_bootstrap_invalid_argument(bootstrap) -> None:
+    """Reject unsupported options before downloading or installing dependencies."""
+    result, commands, _ = bootstrap("--unknown")
+    assert result.returncode == 2
+    assert "Usage:" in result.stderr
+    assert commands == []

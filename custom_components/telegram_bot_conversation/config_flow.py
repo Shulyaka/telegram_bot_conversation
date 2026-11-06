@@ -3,7 +3,7 @@
 from collections.abc import Iterable
 from typing import Any
 
-import voluptuous as vol
+import probatio
 
 from homeassistant.components.ai_task import DOMAIN as AI_TASK_DOMAIN
 from homeassistant.components.stt import DOMAIN as STT_DOMAIN
@@ -76,12 +76,12 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
 
         return {}
 
-    async def get_data_schema(self) -> vol.Schema:
+    async def get_data_schema(self) -> probatio.Schema:
         """Get data schema."""
         for telegram_entry in self.hass.config_entries.async_entries(TELEGRAM_DOMAIN):
-            return vol.Schema(
+            return probatio.Schema(
                 {
-                    vol.Required(
+                    probatio.Required(
                         CONF_TELEGRAM_ENTRY, default=telegram_entry.entry_id
                     ): selector.ConfigEntrySelector(
                         selector.ConfigEntrySelectorConfig(
@@ -92,11 +92,11 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
             )
         raise AbortRecursiveFlow("no_telegram_bot_entries")
 
-    async def get_options_schema(self) -> vol.Schema:
+    async def get_options_schema(self) -> probatio.Schema:
         """Get options schema."""
-        return vol.Schema(
+        return probatio.Schema(
             {
-                vol.Required(
+                probatio.Required(
                     CONF_TMPDIR, default=self.hass.config.path("www")
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
@@ -149,7 +149,7 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
         """Get subentries list."""
         return ["telegram_id"]
 
-    async def get_subentry_schema(self, subentry_type: str) -> vol.Schema:
+    async def get_subentry_schema(self, subentry_type: str) -> probatio.Schema:
         """Get subentry schema."""
         data = self.data or {}
         known_telegram_subentries = {
@@ -216,11 +216,13 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                     default_user = user["value"]
                     break
 
-        default_user_value = default_user if default_user is not None else vol.UNDEFINED
+        default_user_value = (
+            default_user if default_user is not None else probatio.UNDEFINED
+        )
 
-        return vol.Schema(
+        return probatio.Schema(
             {
-                vol.Required(CONF_TELEGRAM_SUBENTRY): selector.SelectSelector(
+                probatio.Required(CONF_TELEGRAM_SUBENTRY): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=telegram_subentry_options,
                         translation_key=CONF_TELEGRAM_SUBENTRY,
@@ -228,7 +230,7 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     ),
                 ),
-                vol.Optional(
+                probatio.Optional(
                     CONF_USER,
                     default=default_user_value,
                 ): selector.SelectSelector(
@@ -239,16 +241,16 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     ),
                 ),
-                vol.Optional(
+                probatio.Optional(
                     CONF_CONVERSATION_AGENT
                 ): selector.ConversationAgentSelector(),
-                vol.Optional(
+                probatio.Optional(
                     CONF_CONVERSATION_TIMEOUT, default={"hours": 24}
                 ): selector.DurationSelector(),
-                vol.Optional(CONF_ATTACHMENTS, default=20): cv.positive_int,
-                vol.Optional(CONF_LATEX, default=True): bool,
-                vol.Optional(CONF_MERMAID, default=True): bool,
-                vol.Optional(
+                probatio.Optional(CONF_ATTACHMENTS, default=20): cv.positive_int,
+                probatio.Optional(CONF_LATEX, default=True): bool,
+                probatio.Optional(CONF_MERMAID, default=True): bool,
+                probatio.Optional(
                     CONF_WEB_PREVIEW, default=WebPreview.LAST.value
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
@@ -258,10 +260,10 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     ),
                 ),
-                vol.Optional(CONF_THOUGHTS, default=True): bool,
-                vol.Optional(CONF_AI_TASK): selector.EntitySelector(
+                probatio.Optional(CONF_THOUGHTS, default=True): bool,
+                probatio.Optional(CONF_AI_TASK): selector.EntitySelector(
                     selector.EntitySelectorConfig(
-                        filter=selector.EntityFilterSelectorConfig(
+                        filter=selector.EntityWithDeviceFilterSelectorConfig(
                             domain=AI_TASK_DOMAIN,
                             supported_features=[
                                 "ai_task.AITaskEntityFeature.GENERATE_IMAGE"
@@ -269,16 +271,16 @@ class TelegramBotConversationFlow(RecursiveConfigFlow, domain=DOMAIN):
                         )
                     )
                 ),
-                vol.Optional(CONF_STT): selector.EntitySelector(
+                probatio.Optional(CONF_STT): selector.EntitySelector(
                     selector.EntitySelectorConfig(
-                        filter=selector.EntityFilterSelectorConfig(
+                        filter=selector.EntityWithDeviceFilterSelectorConfig(
                             domain=STT_DOMAIN,
                         )
                     )
                 ),
-                vol.Optional(CONF_TTS): selector.EntitySelector(
+                probatio.Optional(CONF_TTS): selector.EntitySelector(
                     selector.EntitySelectorConfig(
-                        filter=selector.EntityFilterSelectorConfig(
+                        filter=selector.EntityWithDeviceFilterSelectorConfig(
                             domain=TTS_DOMAIN,
                         )
                     )

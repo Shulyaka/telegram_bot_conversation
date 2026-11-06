@@ -349,6 +349,9 @@ def sync_homeassistant_ignored_requirements(
     _, ha_by_base_key = requirement_map(ha_requirements)
     _, ha_dev_by_base_key = requirement_map(ha_dev_requirements)
     by_full_key, by_base_key = requirement_map(requirements)
+    manifest_names = {
+        normalize_name(Requirement(raw).name) for raw in load_manifest_requirements()
+    }
 
     for ignored in dependabot_pip_ignored_dependencies():
         ignored_requirement = Requirement(ignored)
@@ -367,7 +370,8 @@ def sync_homeassistant_ignored_requirements(
             continue
 
         ha_dev_version = None
-        if ha_dev_requirement is not None:
+        # Shared runtime packages must stay upgradable with Home Assistant.
+        if ha_dev_requirement is not None and name not in manifest_names:
             ha_dev_version = pinned_equal_version(ha_dev_requirement.requirement)
 
         ignored_key = full_key(ignored_requirement)

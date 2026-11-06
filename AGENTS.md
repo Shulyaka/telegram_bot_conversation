@@ -24,7 +24,7 @@ scripts/run-in-env.sh pytest tests/test_entity.py::test_function     # Run a sin
 scripts/run-in-env.sh pytest --cov custom_components/telegram_bot_conversation --cov-report=term-missing  # With coverage
 ```
 
-Tests use `pytest-homeassistant-custom-component` and `pytest-asyncio` with `asyncio_mode = "auto"` (no need for `@pytest.mark.asyncio` decorators).
+Tests use the official `pytest-homeassistant` package and `pytest-asyncio` with `asyncio_mode = "auto"` (no need for `@pytest.mark.asyncio` decorators). The test package version must match Home Assistant; custom integrations are enabled by default.
 
 **Linting & Formatting:**
 
@@ -88,4 +88,4 @@ Telegram message → EVENT_TELEGRAM_* → TelegramBotConversationHandler (filter
 
 ### Test Structure
 
-Tests in `tests/` mirror source modules: `test_init.py`, `test_config_flow.py`, `test_entity.py`, `test_intent.py`. Fixtures in `conftest.py` provide mocked HA instances, Telegram bot/application, and config entries. The test framework is `pytest-homeassistant-custom-component` which supplies HA-specific fixtures like `hass`.
+Tests in `tests/` mirror source modules: `test_init.py`, `test_config_flow.py`, `test_entity.py`, `test_intent.py`. Fixtures in `conftest.py` provide mocked HA instances, Telegram bot/application, and config entries. The test framework is `pytest-homeassistant` which supplies HA-specific fixtures like `hass`; helpers are imported from `pytest_homeassistant`.
