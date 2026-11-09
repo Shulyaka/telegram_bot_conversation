@@ -2,7 +2,7 @@ colorlog==6.10.1
 # Bootstrap selects the matching release or the package from the HA git revision.
 pytest-homeassistant
 pytest-cov>=7.1.0
-mypy>=2.4.0
+mypy>=2.4.1
 pydantic>=2.14.1
 prek>=0.5.7
 types-aiofiles>=25.1.0.20260518
