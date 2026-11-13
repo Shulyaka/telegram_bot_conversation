@@ -8,11 +8,10 @@ import pytest
 from custom_components.telegram_bot_conversation.const import DOMAIN
 from custom_components.telegram_bot_conversation.intent import INTENT_GENERATE_IMAGE
 from homeassistant.components.telegram_bot.const import (
-    ATTR_CHAT_ID,
-    ATTR_MESSAGE_THREAD_ID,
-    CONF_CONFIG_ENTRY_ID,
-    EVENT_TELEGRAM_TEXT,
+    TelegramBotEvent,
+    TelegramBotEventData,
 )
+from homeassistant.const import CommonServiceArgument
 from homeassistant.core import Context, Event, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import intent
@@ -22,16 +21,18 @@ def _telegram_context(
     telegram_entry_id: str,
     *,
     chat_id: int = 12345678,
-    event_type: str = EVENT_TELEGRAM_TEXT,
+    event_type: str = TelegramBotEvent.TEXT,
 ) -> Context:
     """Create a context originating from a Telegram event."""
     context = Context()
     context.origin_event = Event(
         event_type,
         {
-            ATTR_CHAT_ID: chat_id,
-            ATTR_MESSAGE_THREAD_ID: 0,
-            "bot": {CONF_CONFIG_ENTRY_ID: telegram_entry_id},
+            TelegramBotEventData.CHAT_ID: chat_id,
+            TelegramBotEventData.MESSAGE_THREAD_ID: 0,
+            TelegramBotEventData.BOT: {
+                CommonServiceArgument.CONFIG_ENTRY_ID: telegram_entry_id
+            },
         },
     )
     return context

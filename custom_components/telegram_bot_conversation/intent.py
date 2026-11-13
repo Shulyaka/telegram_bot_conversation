@@ -5,14 +5,12 @@ from typing import Any, cast
 import probatio
 
 from homeassistant.components.telegram_bot.const import (
-    ATTR_CHAT_ID,
-    ATTR_MESSAGE_THREAD_ID,
     CONF_CHAT_ID,
-    CONF_CONFIG_ENTRY_ID,
-    EVENT_TELEGRAM_ATTACHMENT,
-    EVENT_TELEGRAM_TEXT,
+    TelegramBotEvent,
+    TelegramBotEventData,
 )
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import CommonServiceArgument
 from homeassistant.core import Context, Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import intent
@@ -46,7 +44,7 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
             super().async_can_handle(intent_obj)
             and (context := intent_obj.context)
             and (event := context.origin_event)
-            and event.event_type in (EVENT_TELEGRAM_TEXT, EVENT_TELEGRAM_ATTACHMENT)
+            and event.event_type in (TelegramBotEvent.TEXT, TelegramBotEvent.ATTACHMENT)
         )
 
     @callback
@@ -60,8 +58,8 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
             context = Context()
 
         if not (event := context.origin_event) or event.event_type not in (
-            EVENT_TELEGRAM_TEXT,
-            EVENT_TELEGRAM_ATTACHMENT,
+            TelegramBotEvent.TEXT,
+            TelegramBotEvent.ATTACHMENT,
         ):
             user_id = context.user_id
 
@@ -150,14 +148,14 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
                 context.user_id = user_id
 
             event_data: dict[str, Any] = {
-                ATTR_CHAT_ID: chat_id,
-                ATTR_MESSAGE_THREAD_ID: 0,
-                "bot": {
-                    CONF_CONFIG_ENTRY_ID: telegram_entry_id,
+                TelegramBotEventData.CHAT_ID: chat_id,
+                TelegramBotEventData.MESSAGE_THREAD_ID: 0,
+                TelegramBotEventData.BOT: {
+                    CommonServiceArgument.CONFIG_ENTRY_ID: telegram_entry_id,
                 },
             }
 
-            event = Event(EVENT_TELEGRAM_TEXT, event_data, context=context)
+            event = Event(TelegramBotEvent.TEXT, event_data, context=context)
 
         return context, event
 
@@ -180,7 +178,9 @@ class BaseTelegramBotConversationIntentHandler(intent.IntentHandler):
             return response
 
         if not (
-            telegram_entry_id := event.data.get("bot", {}).get(CONF_CONFIG_ENTRY_ID)
+            telegram_entry_id := event.data.get(TelegramBotEventData.BOT, {}).get(
+                CommonServiceArgument.CONFIG_ENTRY_ID
+            )
         ):
             response = intent_obj.create_response()
             response.async_set_error(
