@@ -23,38 +23,14 @@ from custom_components.telegram_bot_conversation.entity import (
 )
 from homeassistant.components import conversation
 from homeassistant.components.telegram_bot.const import (
-    ATTR_CALLBACK_QUERY_ID,
-    ATTR_CAPTION,
-    ATTR_CHAT_ACTION,
-    ATTR_CHAT_ID,
-    ATTR_DISABLE_WEB_PREV,
-    ATTR_FILE,
-    ATTR_FILE_ID,
-    ATTR_FILE_MIME_TYPE,
-    ATTR_FILE_PATH,
-    ATTR_IS_BIG,
-    ATTR_KEYBOARD_INLINE,
-    ATTR_MEDIA_TYPE,
-    ATTR_MESSAGE,
-    ATTR_MESSAGE_ID,
-    ATTR_MESSAGE_TAG,
-    ATTR_MESSAGE_THREAD_ID,
-    ATTR_MSGID,
-    ATTR_PARSER,
-    ATTR_REACTION,
-    ATTR_TEXT,
-    CHAT_ACTION_UPLOAD_PHOTO,
     DOMAIN as TELEGRAM_DOMAIN,
-    SERVICE_ANSWER_CALLBACK_QUERY,
-    SERVICE_DOWNLOAD_FILE,
-    SERVICE_EDIT_MESSAGE_MEDIA,
-    SERVICE_EDIT_REPLYMARKUP,
-    SERVICE_SEND_CHAT_ACTION,
-    SERVICE_SEND_DOCUMENT,
-    SERVICE_SEND_MESSAGE,
-    SERVICE_SEND_MESSAGE_DRAFT,
-    SERVICE_SEND_PHOTO,
-    SERVICE_SET_MESSAGE_REACTION,
+    TelegramBotChatAction,
+    TelegramBotEvent,
+    TelegramBotEventData,
+    TelegramBotParseMode,
+    TelegramBotService,
+    TelegramBotServiceArgument,
+    TelegramBotServiceResponse,
 )
 from homeassistant.core import (
     Context,
@@ -89,14 +65,14 @@ async def test_conversation_stream(
         )
         for content in responses
     ]
-    events = async_capture_events(hass, "telegram_sent")
+    events = async_capture_events(hass, TelegramBotEvent.SENT)
 
     await mock_receive_telegram_message("Hi!")
 
     assert len(events) == len(responses)
     for event in events:
-        assert event.data[ATTR_CHAT_ID] == 12345678
-        assert event.data[ATTR_MESSAGE_THREAD_ID] == 0
+        assert event.data[TelegramBotEventData.CHAT_ID] == 12345678
+        assert event.data[TelegramBotEventData.MESSAGE_THREAD_ID] == 0
         assert event.context.user_id is not None
 
     mock_conversation_agent.assert_awaited_once()
@@ -141,12 +117,12 @@ async def test_conversation_agent_error(
         raise HomeAssistantError("Agent failed")
 
     mock_conversation_agent.return_value = response()
-    events = async_capture_events(hass, "telegram_sent")
+    events = async_capture_events(hass, TelegramBotEvent.SENT)
 
     await mock_receive_telegram_message("Hi!")
 
     assert len(events) == 1
-    assert events[0].data[ATTR_CHAT_ID] == 12345678
+    assert events[0].data[TelegramBotEventData.CHAT_ID] == 12345678
     mock_conversation_agent.assert_awaited_once()
     chat_log = next(iter(hass.data[conversation.chat_log.DATA_CHAT_LOGS].values()))
     assert isinstance(chat_log.content[-1], conversation.AssistantContent)
@@ -166,14 +142,14 @@ async def test_conversation_nonstream(
         data={k: v for k, v in subentry.data.items() if k != CONF_CONVERSATION_AGENT},
     )
 
-    events = async_capture_events(hass, "telegram_sent")
+    events = async_capture_events(hass, TelegramBotEvent.SENT)
 
     await mock_receive_telegram_message("Hi!")
 
     assert len(events) == 1
     event = events[0]
-    assert event.data[ATTR_CHAT_ID] == 12345678
-    assert event.data[ATTR_MESSAGE_THREAD_ID] == 0
+    assert event.data[TelegramBotEventData.CHAT_ID] == 12345678
+    assert event.data[TelegramBotEventData.MESSAGE_THREAD_ID] == 0
     assert event.context.user_id is not None
 
     chat_log = next(iter(hass.data.get(conversation.chat_log.DATA_CHAT_LOGS).values()))
@@ -212,8 +188,8 @@ async def test_conversation_rejects_another_user_before_adding_content(
     ):
         await chat_handler.async_process_message(
             Event(
-                "telegram_text",
-                {ATTR_TEXT: "Another user's question"},
+                TelegramBotEvent.TEXT,
+                {TelegramBotEventData.TEXT: "Another user's question"},
                 context=Context(user_id=other_user.id),
             ),
             receive_lock,
@@ -235,8 +211,8 @@ async def test_external_message_does_not_claim_conversation_ownership(
     other_user = await hass.auth.async_create_user("Automation user")
 
     await chat_handler.async_handle_service_call(
-        SERVICE_SEND_MESSAGE,
-        {ATTR_MESSAGE: "An external notification"},
+        TelegramBotService.SEND_MESSAGE,
+        {TelegramBotServiceArgument.MESSAGE: "An external notification"},
         Context(user_id=other_user.id),
     )
 
@@ -353,7 +329,7 @@ async def test_model_command_shows_agent_keyboard(
     edit_reply_markup_calls = async_mock_service(
         hass,
         TELEGRAM_DOMAIN,
-        SERVICE_EDIT_REPLYMARKUP,
+        TelegramBotService.EDIT_REPLYMARKUP,
     )
 
     with patch.object(
@@ -361,10 +337,10 @@ async def test_model_command_shows_agent_keyboard(
         "send_message",
         AsyncMock(
             return_value={
-                "chats": [
+                TelegramBotServiceResponse.CHATS: [
                     {
-                        ATTR_CHAT_ID: chat_handler.chat_id,
-                        ATTR_MESSAGE_ID: 987,
+                        TelegramBotServiceResponse.CHAT_ID: chat_handler.chat_id,
+                        TelegramBotServiceResponse.MESSAGE_ID: 987,
                     }
                 ]
             }
@@ -379,9 +355,11 @@ async def test_model_command_shows_agent_keyboard(
     )
     assert len(edit_reply_markup_calls) == 1
     call = edit_reply_markup_calls[0]
-    assert call.data[ATTR_MESSAGE_ID] == 987
+    assert call.data[TelegramBotServiceArgument.MESSAGE_ID] == 987
     assert ("Home Assistant", "/model conversation.home_assistant") in [
-        button for row in call.data[ATTR_KEYBOARD_INLINE] for button in row
+        button
+        for row in call.data[TelegramBotServiceArgument.INLINE_KEYBOARD]
+        for button in row
     ]
 
 
@@ -396,7 +374,7 @@ async def test_reaction_prefix_is_sent_as_message_reaction(
     reaction_calls = async_mock_service(
         hass,
         TELEGRAM_DOMAIN,
-        SERVICE_SET_MESSAGE_REACTION,
+        TelegramBotService.SET_MESSAGE_REACTION,
     )
 
     with (
@@ -438,10 +416,13 @@ async def test_reaction_prefix_is_sent_as_message_reaction(
         )
 
     assert len(reaction_calls) == 1
-    assert reaction_calls[0].data[ATTR_CHAT_ID] == chat_handler.chat_id
-    assert reaction_calls[0].data[ATTR_MESSAGE_ID] == 321
-    assert reaction_calls[0].data[ATTR_REACTION] == "👍"
-    assert reaction_calls[0].data[ATTR_IS_BIG] is True
+    assert (
+        reaction_calls[0].data[TelegramBotServiceArgument.CHAT_ID]
+        == chat_handler.chat_id
+    )
+    assert reaction_calls[0].data[TelegramBotServiceArgument.MESSAGE_ID] == 321
+    assert reaction_calls[0].data[TelegramBotServiceArgument.REACTION] == "👍"
+    assert reaction_calls[0].data[TelegramBotServiceArgument.IS_BIG] is True
     send_message.assert_any_await(
         message="Reaction accepted",
         thread_id=thread_id,
@@ -459,8 +440,8 @@ async def test_send_message_splits_long_text(
     calls = async_mock_service(
         hass,
         TELEGRAM_DOMAIN,
-        SERVICE_SEND_MESSAGE,
-        response={"chats": []},
+        TelegramBotService.SEND_MESSAGE,
+        response={TelegramBotServiceResponse.CHATS: []},
     )
 
     await chat_handler.send_message(
@@ -470,11 +451,18 @@ async def test_send_message_splits_long_text(
     )
 
     assert len(calls) == 2
-    assert all(len(call.data[ATTR_MESSAGE]) <= MAX_TELEGRAM_LENGTH for call in calls)
-    assert all(call.data[ATTR_PARSER] == "markdownv2" for call in calls)
-    assert calls[0].data[ATTR_DISABLE_WEB_PREV] is True
-    assert calls[1].data[ATTR_DISABLE_WEB_PREV] is False
-    assert calls[0].data[ATTR_MESSAGE_TAG] == DOMAIN
+    assert all(
+        len(call.data[TelegramBotServiceArgument.MESSAGE]) <= MAX_TELEGRAM_LENGTH
+        for call in calls
+    )
+    assert all(
+        call.data[TelegramBotServiceArgument.PARSE_MODE]
+        == TelegramBotParseMode.MARKDOWN_V2
+        for call in calls
+    )
+    assert calls[0].data[TelegramBotServiceArgument.DISABLE_WEB_PAGE_PREVIEW] is True
+    assert calls[1].data[TelegramBotServiceArgument.DISABLE_WEB_PAGE_PREVIEW] is False
+    assert calls[0].data[TelegramBotServiceArgument.MESSAGE_TAG] == DOMAIN
 
 
 @pytest.mark.parametrize("media", ["file", "photo"])
@@ -503,11 +491,11 @@ async def test_send_message_media_and_cleanup(
         else '```python\nprint("hello")\n```'
     )
     service = (
-        SERVICE_EDIT_MESSAGE_MEDIA
+        TelegramBotService.EDIT_MESSAGE_MEDIA
         if edit_draft
-        else SERVICE_SEND_PHOTO
+        else TelegramBotService.SEND_PHOTO
         if is_photo
-        else SERVICE_SEND_DOCUMENT
+        else TelegramBotService.SEND_DOCUMENT
     )
     calls: list[ServiceCall] = []
     files: list[Path] = []
@@ -515,11 +503,11 @@ async def test_send_message_media_and_cleanup(
 
     async def capture_media(call: ServiceCall) -> dict[str, list[dict[str, int]]]:
         """Read the temporary attachment while the service is sending it."""
-        file = Path(call.data[ATTR_FILE])
+        file = Path(call.data[TelegramBotServiceArgument.FILE])
         calls.append(call)
         files.append(file)
         contents.append(await hass.async_add_executor_job(file.read_bytes))
-        return {"chats": []}
+        return {TelegramBotServiceResponse.CHATS: []}
 
     hass.services.async_register(
         TELEGRAM_DOMAIN,
@@ -537,18 +525,21 @@ async def test_send_message_media_and_cleanup(
     assert contents == [b"rendered diagram" if is_photo else b'print("hello")']
     assert files[0].suffix == (".webp" if is_photo else ".py")
     assert not files[0].exists()
-    assert calls[0].data[ATTR_PARSER] == "markdownv2"
+    assert (
+        calls[0].data[TelegramBotServiceArgument.PARSE_MODE]
+        == TelegramBotParseMode.MARKDOWN_V2
+    )
     if is_photo:
         assert (
             calls[0]
-            .data[ATTR_CAPTION]
+            .data[TelegramBotServiceArgument.CAPTION]
             .startswith("[Edit on mermaid\\.live](https://mermaid.live/edit/#pako:")
         )
     else:
-        assert calls[0].data[ATTR_CAPTION] == ""
+        assert calls[0].data[TelegramBotServiceArgument.CAPTION] == ""
     if edit_draft:
-        assert calls[0].data[ATTR_MESSAGE_ID] == 456
-        assert calls[0].data[ATTR_MEDIA_TYPE] == (
+        assert calls[0].data[TelegramBotServiceArgument.MESSAGE_ID] == 456
+        assert calls[0].data[TelegramBotServiceArgument.MEDIA_TYPE] == (
             InputMediaType.PHOTO if is_photo else InputMediaType.DOCUMENT
         )
 
@@ -569,15 +560,20 @@ async def test_send_message_draft_keeps_code_inline(
         {CONF_ATTACHMENTS: 1, CONF_MERMAID: True, CONF_TMPDIR: tmp_path}
     )
     chat_handler.conversations[0] = ConversationConfig(draft={"content": message})
-    calls = async_mock_service(hass, TELEGRAM_DOMAIN, SERVICE_SEND_MESSAGE_DRAFT)
+    calls = async_mock_service(
+        hass, TELEGRAM_DOMAIN, TelegramBotService.SEND_MESSAGE_DRAFT
+    )
 
     with patch("telegramify_markdown.mermaid.render_mermaid") as render_mermaid:
         await chat_handler.send_message(context=Context(), draft=True)
 
     render_mermaid.assert_not_called()
     assert len(calls) == 1
-    assert calls[0].data[ATTR_MESSAGE] == message
-    assert calls[0].data[ATTR_PARSER] == "markdownv2"
+    assert calls[0].data[TelegramBotServiceArgument.MESSAGE] == message
+    assert (
+        calls[0].data[TelegramBotServiceArgument.PARSE_MODE]
+        == TelegramBotParseMode.MARKDOWN_V2
+    )
     assert not list(tmp_path.iterdir())
 
 
@@ -599,21 +595,21 @@ async def test_text_attachment_is_inserted_inline(
     async_mock_service(
         hass,
         TELEGRAM_DOMAIN,
-        SERVICE_DOWNLOAD_FILE,
-        response={ATTR_FILE_PATH: attachment_path.as_posix()},
+        TelegramBotService.DOWNLOAD_FILE,
+        response={TelegramBotServiceResponse.FILE_PATH: attachment_path.as_posix()},
     )
 
     receive_lock = asyncio.Lock()
     await receive_lock.acquire()
     await chat_handler.async_process_message(
         Event(
-            "telegram_attachment",
+            TelegramBotEvent.ATTACHMENT,
             {
-                ATTR_CHAT_ID: chat_handler.chat_id,
-                ATTR_FILE_ID: "telegram-file-id",
-                ATTR_FILE_MIME_TYPE: "text/x-python",
-                ATTR_TEXT: "Please review this",
-                ATTR_MESSAGE_THREAD_ID: 0,
+                TelegramBotEventData.CHAT_ID: chat_handler.chat_id,
+                TelegramBotEventData.FILE_ID: "telegram-file-id",
+                TelegramBotEventData.FILE_MIME_TYPE: "text/x-python",
+                TelegramBotEventData.TEXT: "Please review this",
+                TelegramBotEventData.MESSAGE_THREAD_ID: 0,
             },
             context=Context(),
         ),
@@ -648,11 +644,11 @@ async def test_threaded_message_uses_thread_specific_conversation(
     with patch.object(chat_handler, "send_message", AsyncMock()) as send_message:
         await chat_handler.async_process_message(
             Event(
-                "telegram_text",
+                TelegramBotEvent.TEXT,
                 {
-                    ATTR_CHAT_ID: chat_handler.chat_id,
-                    ATTR_TEXT: "Topic question",
-                    ATTR_MESSAGE_THREAD_ID: thread_id,
+                    TelegramBotEventData.CHAT_ID: chat_handler.chat_id,
+                    TelegramBotEventData.TEXT: "Topic question",
+                    TelegramBotEventData.MESSAGE_THREAD_ID: thread_id,
                 },
                 context=context,
             ),
@@ -688,12 +684,12 @@ async def test_callback_processes_command_and_acknowledges_query(
     answer_calls = async_mock_service(
         hass,
         TELEGRAM_DOMAIN,
-        SERVICE_ANSWER_CALLBACK_QUERY,
+        TelegramBotService.ANSWER_CALLBACK_QUERY,
     )
     edit_reply_markup_calls = async_mock_service(
         hass,
         TELEGRAM_DOMAIN,
-        SERVICE_EDIT_REPLYMARKUP,
+        TelegramBotService.EDIT_REPLYMARKUP,
     )
 
     with patch.object(
@@ -703,15 +699,15 @@ async def test_callback_processes_command_and_acknowledges_query(
     ) as process_command:
         await chat_handler.async_handle_callback(
             Event(
-                "telegram_callback",
+                TelegramBotEvent.CALLBACK,
                 {
-                    ATTR_CHAT_ID: chat_handler.chat_id,
-                    "data": "/model conversation.home_assistant",
-                    ATTR_MESSAGE: {
-                        ATTR_MESSAGE_ID: 654,
-                        ATTR_MESSAGE_THREAD_ID: thread_id,
+                    TelegramBotEventData.CHAT_ID: chat_handler.chat_id,
+                    TelegramBotEventData.DATA: "/model conversation.home_assistant",
+                    TelegramBotEventData.MESSAGE: {
+                        "message_id": 654,
+                        "message_thread_id": thread_id,
                     },
-                    ATTR_MSGID: "callback-query-id",
+                    TelegramBotEventData.ID: "callback-query-id",
                 },
                 context=Context(),
             )
@@ -724,11 +720,17 @@ async def test_callback_processes_command_and_acknowledges_query(
         ["conversation.home_assistant"],
     )
     assert len(answer_calls) == 1
-    assert answer_calls[0].data[ATTR_CALLBACK_QUERY_ID] == "callback-query-id"
-    assert answer_calls[0].data[ATTR_MESSAGE] == "Done"
+    assert (
+        answer_calls[0].data[TelegramBotServiceArgument.CALLBACK_QUERY_ID]
+        == "callback-query-id"
+    )
+    assert answer_calls[0].data[TelegramBotServiceArgument.MESSAGE] == "Done"
     assert len(edit_reply_markup_calls) == 1
-    assert edit_reply_markup_calls[0].data[ATTR_MESSAGE_ID] == 654
-    assert edit_reply_markup_calls[0].data[ATTR_KEYBOARD_INLINE] == []
+    assert edit_reply_markup_calls[0].data[TelegramBotServiceArgument.MESSAGE_ID] == 654
+    assert (
+        edit_reply_markup_calls[0].data[TelegramBotServiceArgument.INLINE_KEYBOARD]
+        == []
+    )
 
 
 async def test_binary_attachment_is_passed_to_agent(
@@ -749,8 +751,8 @@ async def test_binary_attachment_is_passed_to_agent(
     async_mock_service(
         hass,
         TELEGRAM_DOMAIN,
-        SERVICE_DOWNLOAD_FILE,
-        response={ATTR_FILE_PATH: attachment_path.as_posix()},
+        TelegramBotService.DOWNLOAD_FILE,
+        response={TelegramBotServiceResponse.FILE_PATH: attachment_path.as_posix()},
     )
 
     receive_lock = asyncio.Lock()
@@ -758,13 +760,13 @@ async def test_binary_attachment_is_passed_to_agent(
     with patch.object(chat_handler, "send_message", AsyncMock()):
         await chat_handler.async_process_message(
             Event(
-                "telegram_attachment",
+                TelegramBotEvent.ATTACHMENT,
                 {
-                    ATTR_CHAT_ID: chat_handler.chat_id,
-                    ATTR_FILE_ID: "telegram-image-id",
-                    ATTR_FILE_MIME_TYPE: "image/png",
-                    ATTR_TEXT: "What is this?",
-                    ATTR_MESSAGE_THREAD_ID: 0,
+                    TelegramBotEventData.CHAT_ID: chat_handler.chat_id,
+                    TelegramBotEventData.FILE_ID: "telegram-image-id",
+                    TelegramBotEventData.FILE_MIME_TYPE: "image/png",
+                    TelegramBotEventData.TEXT: "What is this?",
+                    TelegramBotEventData.MESSAGE_THREAD_ID: 0,
                 },
                 context=Context(),
             ),
@@ -793,7 +795,7 @@ async def test_attachment_download_error_is_sent_to_chat(
     async_mock_service(
         hass,
         TELEGRAM_DOMAIN,
-        SERVICE_DOWNLOAD_FILE,
+        TelegramBotService.DOWNLOAD_FILE,
         response={},
     )
 
@@ -805,12 +807,12 @@ async def test_attachment_download_error_is_sent_to_chat(
     ):
         await chat_handler.async_process_message(
             Event(
-                "telegram_attachment",
+                TelegramBotEvent.ATTACHMENT,
                 {
-                    ATTR_CHAT_ID: chat_handler.chat_id,
-                    ATTR_FILE_ID: "telegram-file-id",
-                    ATTR_FILE_MIME_TYPE: "image/png",
-                    ATTR_MESSAGE_THREAD_ID: 0,
+                    TelegramBotEventData.CHAT_ID: chat_handler.chat_id,
+                    TelegramBotEventData.FILE_ID: "telegram-file-id",
+                    TelegramBotEventData.FILE_MIME_TYPE: "image/png",
+                    TelegramBotEventData.MESSAGE_THREAD_ID: 0,
                 },
                 context=Context(),
             ),
@@ -836,13 +838,13 @@ async def test_generate_image_handler_sends_photo(
     chat_action_calls = async_mock_service(
         hass,
         TELEGRAM_DOMAIN,
-        SERVICE_SEND_CHAT_ACTION,
+        TelegramBotService.SEND_CHAT_ACTION,
     )
     photo_calls = async_mock_service(
         hass,
         TELEGRAM_DOMAIN,
-        SERVICE_SEND_PHOTO,
-        response={"chats": []},
+        TelegramBotService.SEND_PHOTO,
+        response={TelegramBotServiceResponse.CHATS: []},
     )
 
     with (
@@ -862,10 +864,10 @@ async def test_generate_image_handler_sends_photo(
     ):
         message = await chat_handler.handle_generate_image_intent(
             Event(
-                "telegram_text",
+                TelegramBotEvent.TEXT,
                 {
-                    ATTR_CHAT_ID: chat_handler.chat_id,
-                    ATTR_MESSAGE_THREAD_ID: 12,
+                    TelegramBotEventData.CHAT_ID: chat_handler.chat_id,
+                    TelegramBotEventData.MESSAGE_THREAD_ID: 12,
                 },
                 context=context,
             ),
@@ -886,11 +888,14 @@ async def test_generate_image_handler_sends_photo(
         None,
     )
     assert len(chat_action_calls) == 1
-    assert chat_action_calls[0].data[ATTR_CHAT_ACTION] == CHAT_ACTION_UPLOAD_PHOTO
-    assert chat_action_calls[0].data[ATTR_MESSAGE_THREAD_ID] == 12
+    assert (
+        chat_action_calls[0].data[TelegramBotServiceArgument.CHAT_ACTION]
+        == TelegramBotChatAction.UPLOAD_PHOTO
+    )
+    assert chat_action_calls[0].data[TelegramBotServiceArgument.MESSAGE_THREAD_ID] == 12
     assert len(photo_calls) == 1
-    assert photo_calls[0].data[ATTR_FILE] == image_path.as_posix()
-    assert photo_calls[0].data[ATTR_MESSAGE_THREAD_ID] == 12
+    assert photo_calls[0].data[TelegramBotServiceArgument.FILE] == image_path.as_posix()
+    assert photo_calls[0].data[TelegramBotServiceArgument.MESSAGE_THREAD_ID] == 12
     assert (
         message
         == "The image has been generated and sent to the user. Revised prompt: A clearer lighthouse prompt"
@@ -916,11 +921,11 @@ async def test_new_text_cancels_active_conversation(
     )
     current_conversation.task = old_task
     event = Event(
-        "telegram_text",
+        TelegramBotEvent.TEXT,
         {
-            ATTR_CHAT_ID: chat_handler.chat_id,
-            ATTR_TEXT: "Interrupting question",
-            ATTR_MESSAGE_THREAD_ID: 0,
+            TelegramBotEventData.CHAT_ID: chat_handler.chat_id,
+            TelegramBotEventData.TEXT: "Interrupting question",
+            TelegramBotEventData.MESSAGE_THREAD_ID: 0,
         },
         context=Context(),
     )
