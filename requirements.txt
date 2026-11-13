@@ -3,7 +3,7 @@ colorlog==6.10.1
 pytest-homeassistant
 pytest-cov>=7.1.0
 mypy>=2.4.1
-pydantic>=2.14.1
+pydantic>=2.14.3
 prek>=0.5.10
 types-aiofiles>=25.1.0.20260518
 python-typing-update>=0.9.0
