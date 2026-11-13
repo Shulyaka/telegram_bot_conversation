@@ -3,10 +3,8 @@
 from custom_components.telegram_bot_conversation import SERVICE_MARKDOWNIFY
 from custom_components.telegram_bot_conversation.const import DOMAIN
 from homeassistant.components.telegram_bot.const import (
-    ATTR_PARSER,
-    ATTR_TEXT,
-    PARSER_MD2,
-    PARSER_PLAIN_TEXT,
+    TelegramBotParseMode,
+    TelegramBotServiceArgument,
 )
 from homeassistant.core import HomeAssistant
 
@@ -20,8 +18,8 @@ async def test_markdownify_service_strips_markdown(
         DOMAIN,
         SERVICE_MARKDOWNIFY,
         {
-            ATTR_TEXT: "Hello, **world**!",
-            ATTR_PARSER: PARSER_PLAIN_TEXT,
+            "text": "Hello, **world**!",
+            TelegramBotServiceArgument.PARSE_MODE: TelegramBotParseMode.PLAIN_TEXT,
         },
         blocking=True,
         return_response=True,
@@ -39,8 +37,8 @@ async def test_markdownify_service_with_markdownv2(
         DOMAIN,
         SERVICE_MARKDOWNIFY,
         {
-            ATTR_TEXT: "**Read** [Home Assistant](https://www.home-assistant.io/) ![in 2 hours](tg://time?unix=1780000000&format=r)",
-            ATTR_PARSER: PARSER_MD2,
+            "text": "**Read** [Home Assistant](https://www.home-assistant.io/) ![in 2 hours](tg://time?unix=1780000000&format=r)",
+            TelegramBotServiceArgument.PARSE_MODE: TelegramBotParseMode.MARKDOWN_V2,
         },
         blocking=True,
         return_response=True,
