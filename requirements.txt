@@ -11,7 +11,7 @@ pip>=26.3
 pre-commit>=4.7.0
 pre-commit-hooks>=6.0.0
 codespell>=2.4.3
-ruff>=0.17.3
+ruff>=0.17.6
 yamllint>=1.38.0
 zizmor>=1.32.0
 telegramify-markdown[mermaid]==1.4.2
