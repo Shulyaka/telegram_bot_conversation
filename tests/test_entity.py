@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pytest_homeassistant.common import async_capture_events, async_mock_service
 from telegram.constants import InputMediaType
+from telegramify_markdown import telegramify
 
 from custom_components.telegram_bot_conversation.const import (
     CONF_ATTACHMENTS,
@@ -56,6 +57,7 @@ from homeassistant.components.telegram_bot.const import (
     SERVICE_SEND_PHOTO,
     SERVICE_SET_MESSAGE_REACTION,
 )
+from homeassistant.const import CommonServiceArgument
 from homeassistant.core import (
     Context,
     Event,
@@ -475,6 +477,150 @@ async def test_send_message_splits_long_text(
     assert calls[0].data[ATTR_DISABLE_WEB_PREV] is True
     assert calls[1].data[ATTR_DISABLE_WEB_PREV] is False
     assert calls[0].data[ATTR_MESSAGE_TAG] == DOMAIN
+
+
+@pytest.mark.parametrize(
+    ("private_chat", "next_role", "attachment"),
+    [
+        (False, None, False),
+        (True, None, False),
+        (False, "assistant", False),
+        (True, "assistant", False),
+        (False, None, True),
+    ],
+)
+async def test_queued_draft_does_not_resend_completed_response(
+    hass: HomeAssistant,
+    mock_config_entry,
+    tmp_path: Path,
+    *,
+    next_role: str | None,
+    private_chat: bool,
+    attachment: bool,
+) -> None:
+    """A draft queued during the final send cannot resend a completed response."""
+    chat_handler = next(
+        handler
+        for handler in mock_config_entry.runtime_data.chat_handlers.values()
+        if (handler.chat_id > 0) == private_chat
+    )
+    message = '```python\nprint("hello")\n```' if attachment else "Reply"
+    if attachment:
+        chat_handler.config.update({CONF_ATTACHMENTS: 1, CONF_TMPDIR: tmp_path})
+    current_conversation = ConversationConfig(
+        draft=conversation.AssistantContentDeltaDict(
+            role="assistant", content=message, thinking_content="", tool_calls=[]
+        )
+    )
+    chat_handler.conversations[0] = current_conversation
+    chat_log = conversation.ChatLog(
+        hass,
+        f"telegram_{chat_handler.chat_id}",
+        content=[conversation.AssistantContent("Mock Agent ID", message)],
+    )
+    final_send_started = asyncio.Event()
+    finish_final_send = asyncio.Event()
+    draft_snapshot_taken = asyncio.Event()
+    finish_draft_format = asyncio.Event()
+    draft_formatted = asyncio.Event()
+    cleanup_started = asyncio.Event()
+    finish_cleanup = asyncio.Event()
+    calls: list[ServiceCall] = []
+
+    async def capture_message(call: ServiceCall) -> dict[str, list[dict[str, int]]]:
+        """Pause the final send while a draft queues behind it."""
+        calls.append(call)
+        if call.service != TelegramBotService.SEND_MESSAGE_DRAFT and len(calls) == 1:
+            final_send_started.set()
+            await finish_final_send.wait()
+        message_id = len(calls)
+        hass.bus.async_fire(
+            TelegramBotEvent.SENT,
+            {
+                TelegramBotEventData.BOT: {
+                    CommonServiceArgument.CONFIG_ENTRY_ID: chat_handler.telegram_entry_id
+                },
+                TelegramBotEventData.CHAT_ID: chat_handler.chat_id,
+                TelegramBotEventData.MESSAGE_ID: message_id,
+            },
+        )
+        return {
+            TelegramBotServiceResponse.CHATS: [
+                {
+                    TelegramBotServiceResponse.CHAT_ID: chat_handler.chat_id,
+                    TelegramBotServiceResponse.MESSAGE_ID: message_id,
+                }
+            ]
+        }
+
+    async def format_message(**kwargs):
+        """Signal once the draft has captured the completed response."""
+        items = await telegramify(**kwargs)
+        if kwargs["min_file_lines"] == 0:
+            draft_snapshot_taken.set()
+            await finish_draft_format.wait()
+            draft_formatted.set()
+        return items
+
+    async_add_executor_job = hass.async_add_executor_job
+
+    async def pause_cleanup(func, *args):
+        """Leave the finalized attachment waiting for cleanup without the send lock."""
+        if attachment and func.__name__ == "cleanup_created_files":
+            cleanup_started.set()
+            await finish_cleanup.wait()
+        return await async_add_executor_job(func, *args)
+
+    for service in (
+        TelegramBotService.SEND_MESSAGE,
+        TelegramBotService.SEND_MESSAGE_DRAFT,
+        TelegramBotService.SEND_DOCUMENT,
+        TelegramBotService.EDIT_MESSAGE,
+    ):
+        hass.services.async_register(
+            TELEGRAM_DOMAIN,
+            service,
+            capture_message,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+    with (
+        patch(
+            "custom_components.telegram_bot_conversation.entity.telegramify",
+            side_effect=format_message,
+        ),
+        patch.object(hass, "async_add_executor_job", side_effect=pause_cleanup),
+    ):
+        async with asyncio.timeout(10), asyncio.TaskGroup() as tasks:
+            draft_task = tasks.create_task(
+                chat_handler.send_message(context=Context(), draft=True)
+            )
+            await draft_snapshot_taken.wait()
+            final_task = tasks.create_task(
+                chat_handler.async_chat_log_delta_listener(
+                    chat_log, {"role": next_role}, 0, None, Context()
+                )
+            )
+            await final_send_started.wait()
+            finish_draft_format.set()
+            await draft_formatted.wait()
+            finish_final_send.set()
+            if attachment:
+                await cleanup_started.wait()
+                await draft_task
+                finish_cleanup.set()
+            await asyncio.gather(final_task, draft_task)
+
+    assert len(calls) == 1
+    if attachment:
+        assert calls[0].service == TelegramBotService.SEND_DOCUMENT
+        assert not Path(calls[0].data[TelegramBotServiceArgument.FILE]).exists()
+    else:
+        assert calls[0].data[TelegramBotServiceArgument.MESSAGE] == message
+    if next_role == "assistant":
+        assert current_conversation.draft is not None
+        assert current_conversation.draft["content"] == ""
+    else:
+        assert current_conversation.draft is None
 
 
 @pytest.mark.parametrize("media", ["file", "photo"])
