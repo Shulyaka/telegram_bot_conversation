@@ -233,20 +233,13 @@ class ConversationConfig:
 
     task: asyncio.Task[None] | None = None
     draft: AssistantContentDeltaDict | None = None
-    streamed_content: str | None = None
+    draft_reaction: str | None = None
+    turn_context: Context | None = None
     delta_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
-    content_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
     send_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
     receive_lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
     draft_cancel: CALLBACK_TYPE | None = field(init=False, default=None)
     sent_drafts: dict[int, str] | None = field(init=False, default=None)
-
-    def update_streamed_content(self, delta: dict[str, Any]) -> None:
-        """Track streamed text before HA publishes the completed content."""
-        if "role" in delta:
-            self.streamed_content = "" if delta["role"] == "assistant" else None
-        if self.streamed_content is not None:
-            self.streamed_content += delta.get("content") or ""
 
 
 class TelegramChatHandler:
@@ -817,7 +810,6 @@ class TelegramChatHandler:
         @callback
         def chat_log_delta_listener(chat_log: ChatLog, delta: dict[str, Any]) -> None:
             """Handle chat log delta."""
-            current_conversation.update_streamed_content(delta)
 
             def log_exceptions(task: asyncio.Task[None]) -> None:
                 """Log exceptions from the delta listener."""
@@ -843,12 +835,12 @@ class TelegramChatHandler:
                 "async_chat_log_delta_listener",
             ).add_done_callback(log_exceptions)
 
-        def reset_streamed_content() -> None:
-            """Clear unfinished streamed content once the turn has ended."""
-            current_conversation.streamed_content = None
+        def reset_turn_context() -> None:
+            """Clear the context once the turn has ended."""
+            current_conversation.turn_context = None
 
         with contextlib.ExitStack() as stack:
-            stack.callback(reset_streamed_content)
+            stack.callback(reset_turn_context)
             try:
                 session = stack.enter_context(
                     async_get_chat_session(self.hass, conversation_id, context=context)
@@ -860,6 +852,7 @@ class TelegramChatHandler:
                         chat_log_delta_listener=chat_log_delta_listener,
                     )
                 )
+                current_conversation.turn_context = context
                 if event.data.get(ATTR_FILE_ID):
                     file_path = Path(
                         (
@@ -1021,12 +1014,7 @@ class TelegramChatHandler:
                     translation_key="conversation_error",
                     translation_placeholders={"error": str(error)},
                 )
-                await self.async_handle_chat_log_event(
-                    thread_id=thread_id,
-                    event_type=ChatLogEventType.CONTENT_ADDED,
-                    data={"content": {"role": "assistant", "content": message}},
-                    context=context,
-                )
+                await self._async_send_completed_reply(thread_id, message, context)
             raise error
 
         content = conversation_result.response.speech["plain"]["speech"]
@@ -1038,17 +1026,7 @@ class TelegramChatHandler:
                 and chat_log.content[-1].content in (content, f"Error: {content}")
             )
         ):
-            await self.async_handle_chat_log_event(
-                thread_id=thread_id,
-                event_type=ChatLogEventType.CONTENT_ADDED,
-                data={
-                    "content": {
-                        "role": "assistant",
-                        "content": content,
-                    }
-                },
-                context=context,
-            )
+            await self._async_send_completed_reply(thread_id, content, context)
 
         if (
             event.data.get(ATTR_FILE_MIME_TYPE) == "audio/ogg"
@@ -1160,42 +1138,10 @@ class TelegramChatHandler:
         async with current_conversation.delta_lock:
             LOGGER.debug("Chat log delta: %s", delta)
             if "role" in delta:
-                if current_conversation.draft:
-                    if (
-                        (
-                            current_conversation.draft["content"]
-                            or current_conversation.draft["thinking_content"]
-                            or current_conversation.draft["tool_calls"]
-                        )
-                        and (
-                            delta["role"]
-                            or (  # for last content, only commit if it exists in the chat log
-                                chat_log.content[-1].role == "assistant"
-                                and current_conversation.draft["content"]
-                                and (chat_log.content[-1].content or "").endswith(
-                                    current_conversation.draft["content"]
-                                )  # endswith is to cater for a possible reaction
-                            )
-                        )
-                    ):
-                        try:
-                            await self.async_handle_chat_log_event(
-                                thread_id=thread_id,
-                                event_type=ChatLogEventType.CONTENT_ADDED,
-                                data={"content": current_conversation.draft},
-                                context=context,
-                            )
-                        except HomeAssistantError as err:
-                            LOGGER.error(
-                                "Error sending message for chat_id=%s, thread_id=%s: %s",
-                                self.chat_id,
-                                thread_id,
-                                err,
-                                exc_info=err,
-                            )
-                    else:
-                        await clear_drafts(thread_id, context)
-                elif delta["role"] is None:
+                if current_conversation.draft is not None:
+                    # Completed replies are sent by the chat log event handler.
+                    current_conversation.draft = None
+                    current_conversation.draft_reaction = None
                     await clear_drafts(thread_id, context)
 
                 if delta["role"] == "assistant":
@@ -1203,39 +1149,35 @@ class TelegramChatHandler:
                         role="assistant",
                         content="",
                         thinking_content="",
-                        tool_calls=[],
                     )
-                else:
-                    current_conversation.draft = None
 
                 if delta["role"] is None:
                     responded_tool_calls: set[str] = set()
-                    async with current_conversation.content_lock:
-                        for content in reversed(chat_log.content):
-                            if content.role == "tool_result":
-                                responded_tool_calls.add(content.tool_call_id)
-                                continue
-                            if content.role == "assistant":
-                                for tool_call in content.tool_calls or []:
-                                    if tool_call.id not in responded_tool_calls:
-                                        chat_log.async_add_assistant_content_without_tools(
-                                            ToolResultContent(
-                                                agent_id=self.agent_id
-                                                or HOME_ASSISTANT_AGENT,
-                                                tool_call_id=tool_call.id,
-                                                tool_name=tool_call.tool_name,
-                                                result=ToolResult(
-                                                    data={
-                                                        "error": "asyncio.CancelledError: "
-                                                        "Conversation interrupted before "
-                                                        "tool call could be responded to. "
-                                                        "Please try again."
-                                                    },
-                                                    error=True,
-                                                ),
-                                            )
+                    for content in reversed(chat_log.content):
+                        if content.role == "tool_result":
+                            responded_tool_calls.add(content.tool_call_id)
+                            continue
+                        if content.role == "assistant":
+                            for tool_call in content.tool_calls or []:
+                                if tool_call.id not in responded_tool_calls:
+                                    chat_log.async_add_assistant_content_without_tools(
+                                        ToolResultContent(
+                                            agent_id=self.agent_id
+                                            or HOME_ASSISTANT_AGENT,
+                                            tool_call_id=tool_call.id,
+                                            tool_name=tool_call.tool_name,
+                                            result=ToolResult(
+                                                data={
+                                                    "error": "asyncio.CancelledError: "
+                                                    "Conversation interrupted before "
+                                                    "tool call could be responded to. "
+                                                    "Please try again."
+                                                },
+                                                error=True,
+                                            ),
                                         )
-                            break
+                                    )
+                        break
 
                 if current_conversation.draft:
                     # Send typing action at the beginning of each assistant response
@@ -1255,9 +1197,11 @@ class TelegramChatHandler:
                     )
 
             if current_conversation.draft:
-                if "content" in delta:
-                    if not current_conversation.draft["content"] and (
-                        reaction := get_reaction(delta["content"])
+                if text := delta.get("content"):
+                    if (
+                        not current_conversation.draft["content"]
+                        and current_conversation.draft_reaction is None
+                        and (reaction := get_reaction(text))
                     ):
                         await self.hass.services.async_call(
                             TELEGRAM_DOMAIN,
@@ -1271,11 +1215,9 @@ class TelegramChatHandler:
                             },
                             context=context,
                         )
-                        current_conversation.draft["content"] = (
-                            delta["content"].lstrip().removeprefix(reaction).lstrip()
-                        )
-                    else:
-                        current_conversation.draft["content"] += delta["content"]
+                        current_conversation.draft_reaction = reaction
+                        text = text.lstrip().removeprefix(reaction).lstrip()
+                    current_conversation.draft["content"] += text
                     if not current_conversation.draft_cancel:
                         current_conversation.draft_cancel = (
                             self._async_schedule_update_draft(
@@ -1284,10 +1226,8 @@ class TelegramChatHandler:
                                 context,
                             )
                         )
-                if "thinking_content" in delta:
-                    current_conversation.draft["thinking_content"] += delta[
-                        "thinking_content"
-                    ]
+                if thinking := delta.get("thinking_content"):
+                    current_conversation.draft["thinking_content"] += thinking
                     if not current_conversation.draft_cancel:
                         current_conversation.draft_cancel = (
                             self._async_schedule_update_draft(
@@ -1296,8 +1236,6 @@ class TelegramChatHandler:
                                 context,
                             )
                         )
-                if "tool_calls" in delta:
-                    current_conversation.draft["tool_calls"].extend(delta["tool_calls"])  # type: ignore[union-attr]
 
     async def async_handle_chat_log_event(
         self,
@@ -1306,42 +1244,64 @@ class TelegramChatHandler:
         data: dict[str, Any],
         context: Context,
     ) -> None:
-        """Handle chat log events."""
-        # async_subscribe_chat_logs does not provide context, ensure user_id is set
+        """Handle completed assistant content from the chat log."""
+        if (
+            event_type != ChatLogEventType.CONTENT_ADDED
+            or not (content := data.get("content"))
+            or content.get("role") != "assistant"
+            or content.get("agent_id") == EVENT_CALL_SERVICE
+        ):
+            return
+
+        if (conversation := self.conversations.get(thread_id)) and (
+            turn_context := conversation.turn_context
+        ):
+            context = turn_context
+
+        await self._async_send_completed_reply(
+            thread_id, content.get("content"), context
+        )
+
+    async def _async_send_completed_reply(
+        self, thread_id: int, message: str | None, context: Context
+    ) -> None:
+        """Send the committed reply and clear its preview."""
         context = self._get_context(context)
         current_conversation = self.conversations.setdefault(
             thread_id, ConversationConfig()
         )
-        async with current_conversation.content_lock:
-            if (
-                event_type == ChatLogEventType.CONTENT_ADDED
-                and (content := data.get("content"))
-                and content.get("role") == "assistant"
-                and (message := content.get("content"))
-            ):
-                if content.get("agent_id") == EVENT_CALL_SERVICE:
-                    return
+        # Earlier deltas may still be updating the draft or applying its reaction.
+        async with current_conversation.delta_lock:
+            if not message and current_conversation.draft is None:
+                return
 
-                if current_conversation.draft_cancel:
-                    current_conversation.draft_cancel()
-                try:
-                    await self.send_message(
-                        message=message,
-                        thread_id=thread_id,
-                        context=context,
-                    )
-                except HomeAssistantError as err:
-                    message = async_translate_message(
-                        self.hass,
-                        translation_key="conversation_error",
-                        translation_placeholders={"error": str(err)},
-                    )
-                    await self.send_message(
-                        message=message,
-                        thread_id=thread_id,
-                        context=context,
-                    )
-                    raise
+            if (
+                message
+                and (reaction := current_conversation.draft_reaction)
+                and message.lstrip().startswith(reaction)
+            ):
+                message = message.lstrip().removeprefix(reaction).lstrip()
+            current_conversation.draft = None
+            current_conversation.draft_reaction = None
+
+            try:
+                await self.send_message(
+                    message=message or "",
+                    thread_id=thread_id,
+                    context=context,
+                )
+            except HomeAssistantError as err:
+                message = async_translate_message(
+                    self.hass,
+                    translation_key="conversation_error",
+                    translation_placeholders={"error": str(err)},
+                )
+                await self.send_message(
+                    message=message,
+                    thread_id=thread_id,
+                    context=context,
+                )
+                raise
 
     @callback
     def _reset_conversation_history(self, thread_id: int) -> None:

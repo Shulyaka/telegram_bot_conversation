@@ -123,20 +123,20 @@ async def test_conversation_stream(
     assert len(events) == len(responses) + 1
 
 
-@pytest.mark.parametrize("partial_stream", [False, True])
+@pytest.mark.parametrize("partial_text", [None, "Partial reply", "Agent failed"])
 async def test_conversation_agent_error(
     hass: HomeAssistant,
     mock_receive_telegram_message: Callable[[str], Awaitable[None]],
     mock_conversation_agent: AsyncMock,
     mock_config_entry,
-    partial_stream: bool,
+    partial_text: str | None,
 ) -> None:
     """Handled agent errors are sent once, including after a partial response."""
 
     def response() -> Generator[conversation.AssistantContentDeltaDict]:
-        if partial_stream:
+        if partial_text is not None:
             yield conversation.AssistantContentDeltaDict(
-                role="assistant", content="Partial reply"
+                role="assistant", content=partial_text
             )
         raise HomeAssistantError("Agent failed")
 
@@ -387,66 +387,44 @@ async def test_model_command_shows_agent_keyboard(
 
 async def test_reaction_prefix_is_sent_as_message_reaction(
     hass: HomeAssistant,
+    mock_receive_telegram_message: Callable[[str], Awaitable[None]],
+    mock_conversation_agent: AsyncMock,
     mock_config_entry,
 ) -> None:
-    """Test assistant responses starting with a supported emoji set a reaction."""
+    """Send a streamed response once and react to the incoming Telegram message."""
     chat_handler, _ = _first_chat_handler(mock_config_entry)
-    context = Context()
-    thread_id = 0
+    mock_conversation_agent.return_value = [
+        conversation.AssistantContentDeltaDict(role="assistant"),
+        conversation.AssistantContentDeltaDict(content="👍 Reaction accepted"),
+    ]
+    incoming_events = async_capture_events(hass, "telegram_text")
     reaction_calls = async_mock_service(
         hass,
         TELEGRAM_DOMAIN,
         SERVICE_SET_MESSAGE_REACTION,
     )
+    message_calls = async_mock_service(
+        hass,
+        TELEGRAM_DOMAIN,
+        SERVICE_SEND_MESSAGE,
+        response={"chats": []},
+    )
 
-    with (
-        async_get_chat_session(
-            hass, f"telegram_{chat_handler.chat_id}", context=context
-        ) as session,
-        conversation.async_get_chat_log(
-            hass,
-            session,
-        ) as chat_log,
-        patch.object(chat_handler, "send_message", AsyncMock()) as send_message,
-    ):
-        chat_log.async_add_assistant_content_without_tools(
-            conversation.AssistantContent(
-                agent_id="Mock Agent ID",
-                content="Reaction accepted",
-            )
-        )
-        await chat_handler.async_chat_log_delta_listener(
-            chat_log,
-            {"role": "assistant"},
-            thread_id,
-            321,
-            context,
-        )
-        await chat_handler.async_chat_log_delta_listener(
-            chat_log,
-            {"content": "👍 Reaction accepted"},
-            thread_id,
-            321,
-            context,
-        )
-        await chat_handler.async_chat_log_delta_listener(
-            chat_log,
-            {"role": None},
-            thread_id,
-            321,
-            context,
-        )
+    await mock_receive_telegram_message("Hi!")
 
     assert len(reaction_calls) == 1
     assert reaction_calls[0].data[ATTR_CHAT_ID] == chat_handler.chat_id
-    assert reaction_calls[0].data[ATTR_MESSAGE_ID] == 321
+    assert reaction_calls[0].data[ATTR_MESSAGE_ID] == 1
     assert reaction_calls[0].data[ATTR_REACTION] == "👍"
     assert reaction_calls[0].data[ATTR_IS_BIG] is True
-    send_message.assert_any_await(
-        message="Reaction accepted",
-        thread_id=thread_id,
-        context=context,
-    )
+    assert len(message_calls) == 1
+    assert message_calls[0].data[ATTR_MESSAGE] == "Reaction accepted"
+    assert message_calls[0].data[ATTR_MESSAGE_THREAD_ID] == 0
+    assert len(incoming_events) == 1
+    assert message_calls[0].context == incoming_events[0].context
+    assert reaction_calls[0].context == incoming_events[0].context
+    assert message_calls[0].context.user_id == chat_handler.user_id
+    mock_conversation_agent.assert_awaited_once()
 
 
 async def test_send_message_splits_long_text(
