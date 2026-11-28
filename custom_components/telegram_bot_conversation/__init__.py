@@ -26,30 +26,22 @@ from homeassistant.components.conversation.chat_log import async_subscribe_chat_
 from homeassistant.components.conversation.const import ChatLogEventType
 from homeassistant.components.notify.const import DOMAIN as NOTIFY_DOMAIN
 from homeassistant.components.telegram_bot.const import (
-    ATTR_CHAT_ID,
-    ATTR_MESSAGE_TAG,
-    ATTR_PARSER,
-    ATTR_TEXT,
-    ATTR_USERNAME,
     CONF_CHAT_ID,
-    CONF_CONFIG_ENTRY_ID,
     DOMAIN as TELEGRAM_DOMAIN,
-    EVENT_TELEGRAM_ATTACHMENT,
-    EVENT_TELEGRAM_CALLBACK,
-    EVENT_TELEGRAM_COMMAND,
-    EVENT_TELEGRAM_TEXT,
-    PARSER_MD2,
-    PARSER_PLAIN_TEXT,
-    SERVICE_SEND_MESSAGE,
     SUBENTRY_TYPE_ALLOWED_CHAT_IDS,
+    TelegramBotEvent,
+    TelegramBotEventData,
+    TelegramBotParseMode,
+    TelegramBotService,
+    TelegramBotServiceArgument,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_DOMAIN,
-    ATTR_ENTITY_ID,
     ATTR_SERVICE,
     ATTR_SERVICE_DATA,
     EVENT_CALL_SERVICE,
+    CommonServiceArgument,
 )
 from homeassistant.core import (
     Context,
@@ -172,7 +164,7 @@ class TelegramBotConversationHandler:
         """Register all event listeners."""
         self.entry.async_on_unload(
             self.hass.bus.async_listen(
-                EVENT_TELEGRAM_TEXT,
+                TelegramBotEvent.TEXT,
                 self.async_handle_text,
                 self.text_events_filter,
             )
@@ -180,7 +172,7 @@ class TelegramBotConversationHandler:
 
         self.entry.async_on_unload(
             self.hass.bus.async_listen(
-                EVENT_TELEGRAM_ATTACHMENT,
+                TelegramBotEvent.ATTACHMENT,
                 self.async_handle_text,
                 self.text_events_filter,
             )
@@ -188,7 +180,7 @@ class TelegramBotConversationHandler:
 
         self.entry.async_on_unload(
             self.hass.bus.async_listen(
-                EVENT_TELEGRAM_COMMAND,
+                TelegramBotEvent.COMMAND,
                 self.async_handle_command,
                 self.command_events_filter,
             )
@@ -196,7 +188,7 @@ class TelegramBotConversationHandler:
 
         self.entry.async_on_unload(
             self.hass.bus.async_listen(
-                EVENT_TELEGRAM_CALLBACK,
+                TelegramBotEvent.CALLBACK,
                 self.async_handle_callback,
                 self.callback_events_filter,
             )
@@ -277,7 +269,9 @@ class TelegramBotConversationHandler:
     async def async_handle_text(self, event: Event) -> None:
         """Handle text and attachment events."""
         try:
-            await self.chat_handlers[event.data[ATTR_CHAT_ID]].async_handle_text(event)
+            await self.chat_handlers[
+                event.data[TelegramBotEventData.CHAT_ID]
+            ].async_handle_text(event)
         except Exception as e:  # noqa: BLE001
             LOGGER.exception("Error handling text/attachment event: %s", e)
 
@@ -285,42 +279,48 @@ class TelegramBotConversationHandler:
     def text_events_filter(self, event_data: Mapping[str, Any]) -> bool:
         """Filter text and attachment events."""
         return (
-            event_data.get("bot", {}).get(CONF_CONFIG_ENTRY_ID)
+            event_data.get(TelegramBotEventData.BOT, {}).get(
+                CommonServiceArgument.CONFIG_ENTRY_ID
+            )
             == self.telegram_entry_id
-            and event_data.get(ATTR_CHAT_ID) in self.chat_handlers
+            and event_data.get(TelegramBotEventData.CHAT_ID) in self.chat_handlers
         )
 
     async def async_handle_command(self, event: Event) -> None:
         """Handle command events."""
         try:
-            await self.chat_handlers[event.data[ATTR_CHAT_ID]].async_handle_command(
-                event
-            )
+            await self.chat_handlers[
+                event.data[TelegramBotEventData.CHAT_ID]
+            ].async_handle_command(event)
         except Exception as e:  # noqa: BLE001
             LOGGER.exception("Error handling command event: %s", e)
 
     @callback
     def command_events_filter(self, event_data: Mapping[str, Any]) -> bool:
         """Filter command events."""
-        command = event_data.get("command", "")
+        command = event_data.get(TelegramBotEventData.COMMAND, "")
         command_parts = command.split("@")
         if len(command_parts) == 2:
-            if command_parts[1] != event_data.get("bot", {}).get(ATTR_USERNAME):
+            if command_parts[1] != event_data.get(TelegramBotEventData.BOT, {}).get(
+                "username"
+            ):
                 return False
             command = command_parts[0]
         return (
             command in ("/model", "/new")
-            and event_data.get("bot", {}).get(CONF_CONFIG_ENTRY_ID)
+            and event_data.get(TelegramBotEventData.BOT, {}).get(
+                CommonServiceArgument.CONFIG_ENTRY_ID
+            )
             == self.telegram_entry_id
-            and event_data.get(ATTR_CHAT_ID) in self.chat_handlers
+            and event_data.get(TelegramBotEventData.CHAT_ID) in self.chat_handlers
         )
 
     async def async_handle_callback(self, event: Event) -> None:
         """Handle callback query events."""
         try:
-            await self.chat_handlers[event.data[ATTR_CHAT_ID]].async_handle_callback(
-                event
-            )
+            await self.chat_handlers[
+                event.data[TelegramBotEventData.CHAT_ID]
+            ].async_handle_callback(event)
         except Exception as e:  # noqa: BLE001
             LOGGER.exception("Error handling callback event: %s", e)
 
@@ -328,10 +328,12 @@ class TelegramBotConversationHandler:
     def callback_events_filter(self, event_data: Mapping[str, Any]) -> bool:
         """Filter callback query events."""
         return (
-            event_data.get("data", "").startswith(("/model", "/new"))
-            and event_data.get("bot", {}).get(CONF_CONFIG_ENTRY_ID)
+            event_data.get(TelegramBotEventData.DATA, "").startswith(("/model", "/new"))
+            and event_data.get(TelegramBotEventData.BOT, {}).get(
+                CommonServiceArgument.CONFIG_ENTRY_ID
+            )
             == self.telegram_entry_id
-            and event_data.get(ATTR_CHAT_ID) in self.chat_handlers
+            and event_data.get(TelegramBotEventData.CHAT_ID) in self.chat_handlers
         )
 
     async def async_handle_service_call(self, event: Event) -> None:
@@ -339,13 +341,17 @@ class TelegramBotConversationHandler:
         service = event.data[ATTR_SERVICE]
         service_data = event.data.get(ATTR_SERVICE_DATA) or {}
         chat_ids: set[int] = set()
-        if (service_chat_ids := service_data.get(ATTR_CHAT_ID)) is not None:
+        if (
+            service_chat_ids := service_data.get(TelegramBotServiceArgument.CHAT_ID)
+        ) is not None:
             if isinstance(service_chat_ids, list):
                 chat_ids.update(service_chat_ids)
             else:
                 chat_ids.add(service_chat_ids)
 
-        if (notify_entity_id := service_data.get(ATTR_ENTITY_ID)) is not None:
+        if (
+            notify_entity_id := service_data.get(CommonServiceArgument.ENTITY_ID)
+        ) is not None:
             if not isinstance(notify_entity_id, list):
                 notify_entity_id = [notify_entity_id]
             for entity_id in notify_entity_id:
@@ -372,10 +378,13 @@ class TelegramBotConversationHandler:
         """Filter service call events."""
         return (
             event_data.get(ATTR_DOMAIN) == TELEGRAM_DOMAIN
-            and event_data.get(ATTR_SERVICE) == SERVICE_SEND_MESSAGE
-            and event_data.get(ATTR_SERVICE_DATA, {}).get(ATTR_MESSAGE_TAG) != DOMAIN
+            and event_data.get(ATTR_SERVICE) == TelegramBotService.SEND_MESSAGE
             and event_data.get(ATTR_SERVICE_DATA, {}).get(
-                CONF_CONFIG_ENTRY_ID, self.telegram_entry_id
+                TelegramBotServiceArgument.MESSAGE_TAG
+            )
+            != DOMAIN
+            and event_data.get(ATTR_SERVICE_DATA, {}).get(
+                CommonServiceArgument.CONFIG_ENTRY_ID, self.telegram_entry_id
             )
             == self.telegram_entry_id
         )
@@ -384,7 +393,7 @@ class TelegramBotConversationHandler:
         self, event: Event, context: Context, prompt: str
     ) -> str:
         """Handle the generate image intent."""
-        chat_id = event.data.get(ATTR_CHAT_ID)
+        chat_id = event.data.get(TelegramBotEventData.CHAT_ID)
         if chat_id is None:
             raise HomeAssistantError(
                 "Missing chat_id in event data for generate image intent"
@@ -510,10 +519,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                     "!\\1",
                     entities_to_markdownv2(item.text, item.entities),
                 )
-                if call.data[ATTR_PARSER] == PARSER_MD2
+                if call.data[TelegramBotServiceArgument.PARSE_MODE]
+                == TelegramBotParseMode.MARKDOWN_V2
                 else item.text
                 for item in await telegramify(
-                    content=call.data[ATTR_TEXT],
+                    content=call.data["text"],
                     latex_escape=True,
                     render_mermaid=False,
                     min_file_lines=0,
@@ -528,9 +538,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         markdownify,
         schema=probatio.Schema(
             {
-                probatio.Required(ATTR_TEXT): cv.string,
-                probatio.Optional(ATTR_PARSER, default=PARSER_MD2): probatio.In(
-                    [PARSER_MD2, PARSER_PLAIN_TEXT]
+                probatio.Required("text"): cv.string,
+                probatio.Optional(
+                    TelegramBotServiceArgument.PARSE_MODE,
+                    default=TelegramBotParseMode.MARKDOWN_V2,
+                ): probatio.In(
+                    [TelegramBotParseMode.MARKDOWN_V2, TelegramBotParseMode.PLAIN_TEXT]
                 ),
             }
         ),

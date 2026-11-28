@@ -40,55 +40,17 @@ from homeassistant.components.conversation.const import (
 )
 from homeassistant.components.media_source import async_resolve_media
 from homeassistant.components.telegram_bot.const import (
-    ATTR_CALLBACK_QUERY_ID,
-    ATTR_CAPTION,
-    ATTR_CHAT_ACTION,
-    ATTR_CHAT_ID,
-    ATTR_DISABLE_NOTIF,
-    ATTR_DISABLE_WEB_PREV,
-    ATTR_DRAFT_ID,
-    ATTR_FILE,
-    ATTR_FILE_ID,
-    ATTR_FILE_MIME_TYPE,
-    ATTR_FILE_PATH,
-    ATTR_IS_BIG,
-    ATTR_KEYBOARD_INLINE,
-    ATTR_MEDIA_TYPE,
-    ATTR_MESSAGE,
-    ATTR_MESSAGE_ID,
-    ATTR_MESSAGE_TAG,
-    ATTR_MESSAGE_THREAD_ID,
-    ATTR_MSG,
-    ATTR_MSGID,
-    ATTR_PARSER,
-    ATTR_REACTION,
-    ATTR_TEXT,
-    ATTR_TITLE,
-    ATTR_URL,
-    ATTR_USER_ID,
-    CHAT_ACTION_RECORD_VOICE,
-    CHAT_ACTION_TYPING,
-    CHAT_ACTION_UPLOAD_PHOTO,
-    CHAT_ACTION_UPLOAD_VOICE,
-    CONF_CONFIG_ENTRY_ID,
     DOMAIN as TELEGRAM_DOMAIN,
-    EVENT_TELEGRAM_SENT,
-    SERVICE_ANSWER_CALLBACK_QUERY,
-    SERVICE_DELETE_MESSAGE,
-    SERVICE_DOWNLOAD_FILE,
-    SERVICE_EDIT_MESSAGE,
-    SERVICE_EDIT_MESSAGE_MEDIA,
-    SERVICE_EDIT_REPLYMARKUP,
-    SERVICE_SEND_CHAT_ACTION,
-    SERVICE_SEND_DOCUMENT,
-    SERVICE_SEND_MESSAGE,
-    SERVICE_SEND_MESSAGE_DRAFT,
-    SERVICE_SEND_PHOTO,
-    SERVICE_SEND_VOICE,
-    SERVICE_SET_MESSAGE_REACTION,
+    TelegramBotChatAction,
+    TelegramBotEvent,
+    TelegramBotEventData,
+    TelegramBotParseMode,
+    TelegramBotService,
+    TelegramBotServiceArgument,
+    TelegramBotServiceResponse,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ENTITY_ID, EVENT_CALL_SERVICE
+from homeassistant.const import EVENT_CALL_SERVICE, CommonServiceArgument
 from homeassistant.core import CALLBACK_TYPE, Context, Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.chat_session import (
@@ -153,8 +115,8 @@ def get_telegram_service_target(
 ) -> dict[str, str | int | list[str]]:
     """Build a telegram service target payload."""
     if notify_entity_id:
-        return {ATTR_ENTITY_ID: [notify_entity_id]}
-    return {ATTR_CHAT_ID: chat_id}
+        return {CommonServiceArgument.ENTITY_ID: [notify_entity_id]}
+    return {TelegramBotServiceArgument.CHAT_ID: chat_id}
 
 
 class TelegramMessageWatcher:
@@ -165,7 +127,7 @@ class TelegramMessageWatcher:
         self.hass = hass
         self.telegram_config_entry_id = telegram_config_entry_id
         self._unregister_listener: CALLBACK_TYPE | None = self.hass.bus.async_listen(
-            EVENT_TELEGRAM_SENT,
+            TelegramBotEvent.SENT,
             self.async_handle_sent,
             self.callback_sent_filter,
         )
@@ -176,15 +138,17 @@ class TelegramMessageWatcher:
     def callback_sent_filter(self, event_data: Mapping[str, Any]) -> bool:
         """Filter sent events."""
         return bool(
-            event_data.get("bot", {}).get(CONF_CONFIG_ENTRY_ID)
+            event_data.get(TelegramBotEventData.BOT, {}).get(
+                CommonServiceArgument.CONFIG_ENTRY_ID
+            )
             == self.telegram_config_entry_id
         )
 
     async def async_handle_sent(self, event: Event) -> None:
         """Handle sent events."""
         message = (
-            int(event.data[ATTR_CHAT_ID]),
-            int(event.data.get(ATTR_MESSAGE_ID, 0)),
+            int(event.data[TelegramBotEventData.CHAT_ID]),
+            int(event.data.get(TelegramBotEventData.MESSAGE_ID, 0)),
         )
         self.sent_messages.append(message)
         if message in self.watchers:
@@ -386,7 +350,9 @@ class TelegramChatHandler:
                 else ""
             )
 
-        messages: dict[str, list[dict[str, int]]] = {"chats": []}
+        messages: dict[str, list[dict[str, int]]] = {
+            TelegramBotServiceResponse.CHATS: []
+        }
         created_files: list[Path] = []
 
         def save_file(file_name: str, file_data: bytes) -> Path:
@@ -430,16 +396,18 @@ class TelegramChatHandler:
                     )
                     await self.hass.services.async_call(
                         TELEGRAM_DOMAIN,
-                        SERVICE_SEND_MESSAGE_DRAFT,
+                        TelegramBotService.SEND_MESSAGE_DRAFT,
                         {
-                            ATTR_MESSAGE: markdownify(thinking_message),
+                            TelegramBotServiceArgument.MESSAGE: markdownify(
+                                thinking_message
+                            ),
                             **get_telegram_service_target(
                                 self.chat_id, self.notify_entity_id
                             ),
-                            ATTR_MESSAGE_THREAD_ID: thread_id,
-                            CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                            ATTR_PARSER: "markdownv2",
-                            ATTR_DRAFT_ID: 1,
+                            TelegramBotServiceArgument.MESSAGE_THREAD_ID: thread_id,
+                            CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
+                            TelegramBotServiceArgument.PARSE_MODE: TelegramBotParseMode.MARKDOWN_V2,
+                            TelegramBotServiceArgument.DRAFT_ID: 1,
                         },
                         blocking=True,
                         context=context,
@@ -503,13 +471,13 @@ class TelegramChatHandler:
                                     )
                                     await self.hass.services.async_call(
                                         TELEGRAM_DOMAIN,
-                                        SERVICE_DELETE_MESSAGE,
+                                        TelegramBotService.DELETE_MESSAGE,
                                         {
-                                            ATTR_MESSAGE_ID: message_id,
+                                            TelegramBotServiceArgument.MESSAGE_ID: message_id,
                                             **get_telegram_service_target(
                                                 self.chat_id, self.notify_entity_id
                                             ),
-                                            CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                            CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
                                         },
                                         blocking=True,
                                         context=context,
@@ -525,16 +493,16 @@ class TelegramChatHandler:
                                 LOGGER.debug("Editing message with updated text")
                                 await self.hass.services.async_call(
                                     TELEGRAM_DOMAIN,
-                                    SERVICE_EDIT_MESSAGE,
+                                    TelegramBotService.EDIT_MESSAGE,
                                     {
-                                        ATTR_MESSAGE: text,
+                                        TelegramBotServiceArgument.MESSAGE: text,
                                         **get_telegram_service_target(
                                             self.chat_id, self.notify_entity_id
                                         ),
-                                        ATTR_MESSAGE_ID: message_id,
-                                        CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                                        ATTR_PARSER: "markdownv2",
-                                        ATTR_DISABLE_WEB_PREV: disable_web_prev,
+                                        TelegramBotServiceArgument.MESSAGE_ID: message_id,
+                                        CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                        TelegramBotServiceArgument.PARSE_MODE: TelegramBotParseMode.MARKDOWN_V2,
+                                        TelegramBotServiceArgument.DISABLE_WEB_PAGE_PREVIEW: disable_web_prev,
                                     },
                                     blocking=True,
                                     context=context,
@@ -544,36 +512,36 @@ class TelegramChatHandler:
                                 LOGGER.debug("Editing message with media")
                                 await self.hass.services.async_call(
                                     TELEGRAM_DOMAIN,
-                                    SERVICE_EDIT_MESSAGE_MEDIA,
+                                    TelegramBotService.EDIT_MESSAGE_MEDIA,
                                     {
-                                        ATTR_FILE: (
+                                        TelegramBotServiceArgument.FILE: (
                                             await self.hass.async_add_executor_job(
                                                 save_file,
                                                 item.file_name,
                                                 item.file_data,
                                             )
                                         ).as_posix(),
-                                        ATTR_CAPTION: entities_to_markdownv2(
+                                        TelegramBotServiceArgument.CAPTION: entities_to_markdownv2(
                                             item.caption_text, item.caption_entities
                                         ),
                                         **get_telegram_service_target(
                                             self.chat_id, self.notify_entity_id
                                         ),
-                                        ATTR_MESSAGE_ID: message_id,
-                                        ATTR_MEDIA_TYPE: InputMediaType.PHOTO
+                                        TelegramBotServiceArgument.MESSAGE_ID: message_id,
+                                        TelegramBotServiceArgument.MEDIA_TYPE: InputMediaType.PHOTO
                                         if isinstance(item, Photo)
                                         else InputMediaType.DOCUMENT,
-                                        CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                                        ATTR_PARSER: "markdownv2",
+                                        CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                        TelegramBotServiceArgument.PARSE_MODE: TelegramBotParseMode.MARKDOWN_V2,
                                     },
                                     blocking=True,
                                     context=context,
                                 )
                                 LOGGER.debug("Editing message done")
-                            messages["chats"].append(
+                            messages[TelegramBotServiceResponse.CHATS].append(
                                 {
-                                    ATTR_CHAT_ID: self.chat_id,
-                                    ATTR_MESSAGE_ID: message_id,
+                                    TelegramBotServiceResponse.CHAT_ID: self.chat_id,
+                                    TelegramBotServiceResponse.MESSAGE_ID: message_id,
                                 }
                             )
                             current_conversation.sent_drafts.update({message_id: text})
@@ -584,76 +552,84 @@ class TelegramChatHandler:
                                 item_messages: dict[str, list[dict[str, Any]]] = (
                                     await self.hass.services.async_call(
                                         TELEGRAM_DOMAIN,
-                                        SERVICE_SEND_MESSAGE,
+                                        TelegramBotService.SEND_MESSAGE,
                                         {
-                                            ATTR_MESSAGE: text,
+                                            TelegramBotServiceArgument.MESSAGE: text,
                                             **get_telegram_service_target(
                                                 self.chat_id, self.notify_entity_id
                                             ),
-                                            ATTR_MESSAGE_THREAD_ID: thread_id,
-                                            CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                                            ATTR_PARSER: "markdownv2",
-                                            ATTR_DISABLE_NOTIF: disable_notification,
-                                            ATTR_DISABLE_WEB_PREV: disable_web_prev,
-                                            ATTR_MESSAGE_TAG: DOMAIN,
+                                            TelegramBotServiceArgument.MESSAGE_THREAD_ID: thread_id,
+                                            CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                            TelegramBotServiceArgument.PARSE_MODE: TelegramBotParseMode.MARKDOWN_V2,
+                                            TelegramBotServiceArgument.DISABLE_NOTIFICATION: disable_notification,
+                                            TelegramBotServiceArgument.DISABLE_WEB_PAGE_PREVIEW: disable_web_prev,
+                                            TelegramBotServiceArgument.MESSAGE_TAG: DOMAIN,
                                         },
                                         blocking=True,
                                         context=context,
                                         return_response=True,
                                     )  # type: ignore[assignment]
-                                    or {"chats": []}
+                                    or {TelegramBotServiceResponse.CHATS: []}
                                 )
                                 LOGGER.debug("Sending text message done")
                             elif isinstance(item, (Photo, File)):
                                 LOGGER.debug("Sending media")
                                 item_messages = await self.hass.services.async_call(
                                     TELEGRAM_DOMAIN,
-                                    SERVICE_SEND_PHOTO
+                                    TelegramBotService.SEND_PHOTO
                                     if isinstance(item, Photo)
-                                    else SERVICE_SEND_DOCUMENT,
+                                    else TelegramBotService.SEND_DOCUMENT,
                                     {
-                                        ATTR_FILE: (
+                                        TelegramBotServiceArgument.FILE: (
                                             await self.hass.async_add_executor_job(
                                                 save_file,
                                                 item.file_name,
                                                 item.file_data,
                                             )
                                         ).as_posix(),
-                                        ATTR_CAPTION: entities_to_markdownv2(
+                                        TelegramBotServiceArgument.CAPTION: entities_to_markdownv2(
                                             item.caption_text, item.caption_entities
                                         ),
                                         **get_telegram_service_target(
                                             self.chat_id, self.notify_entity_id
                                         ),
-                                        ATTR_MESSAGE_THREAD_ID: thread_id,
-                                        CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                                        ATTR_DISABLE_NOTIF: disable_notification,
-                                        ATTR_PARSER: "markdownv2",
-                                        ATTR_MESSAGE_TAG: DOMAIN,
+                                        TelegramBotServiceArgument.MESSAGE_THREAD_ID: thread_id,
+                                        CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                        TelegramBotServiceArgument.DISABLE_NOTIFICATION: disable_notification,
+                                        TelegramBotServiceArgument.PARSE_MODE: TelegramBotParseMode.MARKDOWN_V2,
+                                        TelegramBotServiceArgument.MESSAGE_TAG: DOMAIN,
                                     },
                                     blocking=True,
                                     context=context,
                                     return_response=True,
-                                ) or {"chats": []}  # type: ignore[assignment]
+                                ) or {TelegramBotServiceResponse.CHATS: []}  # type: ignore[assignment]
                                 LOGGER.debug("Sending media done")
 
-                            messages["chats"].extend(item_messages["chats"])
+                            messages[TelegramBotServiceResponse.CHATS].extend(
+                                item_messages[TelegramBotServiceResponse.CHATS]
+                            )
                             await asyncio.wait_for(
                                 asyncio.gather(
                                     *(
                                         watcher.wait_message(
-                                            msg[ATTR_CHAT_ID], msg[ATTR_MESSAGE_ID]
+                                            msg[TelegramBotServiceResponse.CHAT_ID],
+                                            msg[TelegramBotServiceResponse.MESSAGE_ID],
                                         )
-                                        for msg in item_messages["chats"]
+                                        for msg in item_messages[
+                                            TelegramBotServiceResponse.CHATS
+                                        ]
                                     )
                                 ),
                                 timeout=10.0,
                             )
                             current_conversation.sent_drafts.update(
                                 {
-                                    msg[ATTR_MESSAGE_ID]: text
-                                    for msg in item_messages["chats"]
-                                    if msg[ATTR_CHAT_ID] == self.chat_id
+                                    msg[TelegramBotServiceResponse.MESSAGE_ID]: text
+                                    for msg in item_messages[
+                                        TelegramBotServiceResponse.CHATS
+                                    ]
+                                    if msg[TelegramBotServiceResponse.CHAT_ID]
+                                    == self.chat_id
                                 }
                             )
 
@@ -662,13 +638,13 @@ class TelegramChatHandler:
                     LOGGER.debug("Deleting remaining message")
                     await self.hass.services.async_call(
                         TELEGRAM_DOMAIN,
-                        SERVICE_DELETE_MESSAGE,
+                        TelegramBotService.DELETE_MESSAGE,
                         {
-                            ATTR_MESSAGE_ID: message_id,
+                            TelegramBotServiceArgument.MESSAGE_ID: message_id,
                             **get_telegram_service_target(
                                 self.chat_id, self.notify_entity_id
                             ),
-                            CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                            CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
                         },
                         blocking=True,
                         context=context,
@@ -688,16 +664,16 @@ class TelegramChatHandler:
                     LOGGER.debug("Sending draft")
                     await self.hass.services.async_call(
                         TELEGRAM_DOMAIN,
-                        SERVICE_SEND_MESSAGE_DRAFT,
+                        TelegramBotService.SEND_MESSAGE_DRAFT,
                         {
-                            ATTR_MESSAGE: text,
+                            TelegramBotServiceArgument.MESSAGE: text,
                             **get_telegram_service_target(
                                 self.chat_id, self.notify_entity_id
                             ),
-                            ATTR_MESSAGE_THREAD_ID: thread_id,
-                            CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                            ATTR_PARSER: "markdownv2",
-                            ATTR_DRAFT_ID: len(items) + 1,
+                            TelegramBotServiceArgument.MESSAGE_THREAD_ID: thread_id,
+                            CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
+                            TelegramBotServiceArgument.PARSE_MODE: TelegramBotParseMode.MARKDOWN_V2,
+                            TelegramBotServiceArgument.DRAFT_ID: len(items) + 1,
                         },
                         blocking=True,
                         context=context,
@@ -745,7 +721,7 @@ class TelegramChatHandler:
 
     async def async_handle_text(self, event: Event) -> None:
         """Handle text and attachment events."""
-        thread_id = event.data.get(ATTR_MESSAGE_THREAD_ID) or 0
+        thread_id = event.data.get(TelegramBotEventData.MESSAGE_THREAD_ID) or 0
 
         current_conversation = self.conversations.setdefault(
             thread_id, ConversationConfig()
@@ -803,9 +779,11 @@ class TelegramChatHandler:
         self, event: Event, receive_lock: asyncio.Lock
     ) -> None:
         """Handle conversation task."""
-        context = self._get_context(event.context, event.data.get(ATTR_USER_ID))
+        context = self._get_context(
+            event.context, event.data.get(TelegramBotEventData.USER_ID)
+        )
 
-        thread_id = event.data.get(ATTR_MESSAGE_THREAD_ID) or 0
+        thread_id = event.data.get(TelegramBotEventData.MESSAGE_THREAD_ID) or 0
         conversation_id = self._get_conversation_id(thread_id)
         current_conversation = self.conversations.setdefault(
             thread_id, ConversationConfig()
@@ -837,7 +815,7 @@ class TelegramChatHandler:
                     chat_log,
                     delta,
                     thread_id,
-                    event.data.get(ATTR_MSGID),
+                    event.data.get(TelegramBotEventData.ID),
                     context,
                 ),
                 "async_chat_log_delta_listener",
@@ -860,21 +838,23 @@ class TelegramChatHandler:
                         chat_log_delta_listener=chat_log_delta_listener,
                     )
                 )
-                if event.data.get(ATTR_FILE_ID):
+                if event.data.get(TelegramBotEventData.FILE_ID):
                     file_path = Path(
                         (
                             await self.hass.services.async_call(  # type: ignore[arg-type]
                                 TELEGRAM_DOMAIN,
-                                SERVICE_DOWNLOAD_FILE,
+                                TelegramBotService.DOWNLOAD_FILE,
                                 {
-                                    CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                                    ATTR_FILE_ID: event.data[ATTR_FILE_ID],
+                                    CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                    TelegramBotServiceArgument.FILE_ID: event.data[
+                                        TelegramBotEventData.FILE_ID
+                                    ],
                                 },
                                 blocking=True,
                                 context=context,
                                 return_response=True,
                             )
-                        )[ATTR_FILE_PATH]  # type: ignore[index]
+                        )[TelegramBotServiceResponse.FILE_PATH]  # type: ignore[index]
                     )
 
                     @callback
@@ -884,14 +864,16 @@ class TelegramChatHandler:
 
                     session.async_on_cleanup(cleanup_file_callback)
 
-                    mime_type = event.data.get(ATTR_FILE_MIME_TYPE, "")
+                    mime_type = event.data.get(TelegramBotEventData.FILE_MIME_TYPE, "")
                     if mime_type.startswith("text/"):
                         content = await self.hass.async_add_executor_job(
                             file_path.read_text
                         )
                         input_text = f"{file_path.name}:\n```{mime_type[5:].removeprefix('plain')}\n{content}\n```"
-                        if event.data.get(ATTR_TEXT):
-                            input_text += f"\n\n{event.data.get(ATTR_TEXT)}"
+                        if event.data.get(TelegramBotEventData.TEXT):
+                            input_text += (
+                                f"\n\n{event.data.get(TelegramBotEventData.TEXT)}"
+                            )
                         chat_log.async_add_user_content(UserContent(input_text))
                     elif mime_type == "audio/ogg":
                         stt_entity_id = self.config.get(CONF_STT)
@@ -956,18 +938,22 @@ class TelegramChatHandler:
                             raise HomeAssistantError("STT error")  # noqa: TRY301
 
                         input_text = stt_result.text
-                        if event.data.get(ATTR_TEXT):
-                            input_text += f"\n\n{event.data.get(ATTR_TEXT)}"
+                        if event.data.get(TelegramBotEventData.TEXT):
+                            input_text += (
+                                f"\n\n{event.data.get(TelegramBotEventData.TEXT)}"
+                            )
                         extra_system_prompt += "\nThe user has sent a voice message that has been transcribed."
                         chat_log.async_add_user_content(UserContent(input_text))
                     else:
-                        input_text = event.data.get(ATTR_TEXT) or file_path.name
+                        input_text = (
+                            event.data.get(TelegramBotEventData.TEXT) or file_path.name
+                        )
                         chat_log.async_add_user_content(
                             UserContent(
                                 input_text,
                                 attachments=[
                                     Attachment(
-                                        media_content_id=f"media-source://{TELEGRAM_DOMAIN}/{event.data.get(ATTR_FILE_ID)}",
+                                        media_content_id=f"media-source://{TELEGRAM_DOMAIN}/{event.data.get(TelegramBotEventData.FILE_ID)}",
                                         mime_type=mime_type,
                                         path=file_path,
                                     )
@@ -975,7 +961,7 @@ class TelegramChatHandler:
                             )
                         )
                 else:
-                    input_text = event.data.get(ATTR_TEXT) or ""
+                    input_text = event.data.get(TelegramBotEventData.TEXT) or ""
                     chat_log.async_add_user_content(UserContent(input_text))
             except Exception as err:
                 # Report input errors here without HA adding a second error reply.
@@ -1051,21 +1037,21 @@ class TelegramChatHandler:
             )
 
         if (
-            event.data.get(ATTR_FILE_MIME_TYPE) == "audio/ogg"
+            event.data.get(TelegramBotEventData.FILE_MIME_TYPE) == "audio/ogg"
             and content
             and self.config.get(CONF_TTS)
         ):
             await self.hass.services.async_call(
                 TELEGRAM_DOMAIN,
-                SERVICE_SEND_CHAT_ACTION,
+                TelegramBotService.SEND_CHAT_ACTION,
                 {
-                    CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                    CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
                     **get_telegram_service_target(
                         self.chat_id,
                         self.notify_entity_id,
                     ),
-                    ATTR_MESSAGE_THREAD_ID: thread_id,
-                    ATTR_CHAT_ACTION: CHAT_ACTION_RECORD_VOICE,
+                    TelegramBotServiceArgument.MESSAGE_THREAD_ID: thread_id,
+                    TelegramBotServiceArgument.CHAT_ACTION: TelegramBotChatAction.RECORD_VOICE,
                 },
                 context=context,
             )
@@ -1084,12 +1070,12 @@ class TelegramChatHandler:
 
             await self.hass.services.async_call(
                 TELEGRAM_DOMAIN,
-                SERVICE_SEND_CHAT_ACTION,
+                TelegramBotService.SEND_CHAT_ACTION,
                 {
-                    CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                    CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
                     **get_telegram_service_target(self.chat_id, self.notify_entity_id),
-                    ATTR_MESSAGE_THREAD_ID: thread_id,
-                    ATTR_CHAT_ACTION: CHAT_ACTION_UPLOAD_VOICE,
+                    TelegramBotServiceArgument.MESSAGE_THREAD_ID: thread_id,
+                    TelegramBotServiceArgument.CHAT_ACTION: TelegramBotChatAction.UPLOAD_VOICE,
                 },
                 context=context,
             )
@@ -1098,17 +1084,17 @@ class TelegramChatHandler:
             async with current_conversation.send_lock:
                 await self.hass.services.async_call(
                     TELEGRAM_DOMAIN,
-                    SERVICE_SEND_VOICE,
+                    TelegramBotService.SEND_VOICE,
                     {
-                        ATTR_URL: tts_url,
+                        TelegramBotServiceArgument.URL: tts_url,
                         **get_telegram_service_target(
                             self.chat_id, self.notify_entity_id
                         ),
-                        ATTR_MESSAGE_THREAD_ID: thread_id,
-                        CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                        ATTR_PARSER: "markdownv2",
-                        ATTR_MESSAGE_TAG: DOMAIN,
-                        ATTR_DISABLE_NOTIF: True,
+                        TelegramBotServiceArgument.MESSAGE_THREAD_ID: thread_id,
+                        CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
+                        TelegramBotServiceArgument.PARSE_MODE: TelegramBotParseMode.MARKDOWN_V2,
+                        TelegramBotServiceArgument.MESSAGE_TAG: DOMAIN,
+                        TelegramBotServiceArgument.DISABLE_NOTIFICATION: True,
                     },
                     blocking=True,
                     context=context,
@@ -1241,15 +1227,15 @@ class TelegramChatHandler:
                     # Send typing action at the beginning of each assistant response
                     await self.hass.services.async_call(
                         TELEGRAM_DOMAIN,
-                        SERVICE_SEND_CHAT_ACTION,
+                        TelegramBotService.SEND_CHAT_ACTION,
                         {
-                            CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                            CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
                             **get_telegram_service_target(
                                 self.chat_id,
                                 self.notify_entity_id,
                             ),
-                            ATTR_MESSAGE_THREAD_ID: thread_id,
-                            ATTR_CHAT_ACTION: CHAT_ACTION_TYPING,
+                            TelegramBotServiceArgument.MESSAGE_THREAD_ID: thread_id,
+                            TelegramBotServiceArgument.CHAT_ACTION: TelegramBotChatAction.TYPING,
                         },
                         context=context,
                     )
@@ -1261,13 +1247,13 @@ class TelegramChatHandler:
                     ):
                         await self.hass.services.async_call(
                             TELEGRAM_DOMAIN,
-                            SERVICE_SET_MESSAGE_REACTION,
+                            TelegramBotService.SET_MESSAGE_REACTION,
                             {
-                                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                                ATTR_MESSAGE_ID: msg_id or "last",
-                                ATTR_CHAT_ID: self.chat_id,
-                                ATTR_REACTION: reaction,
-                                ATTR_IS_BIG: True,
+                                CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                TelegramBotServiceArgument.MESSAGE_ID: msg_id or "last",
+                                TelegramBotServiceArgument.CHAT_ID: self.chat_id,
+                                TelegramBotServiceArgument.REACTION: reaction,
+                                TelegramBotServiceArgument.IS_BIG: True,
                             },
                             context=context,
                         )
@@ -1456,19 +1442,21 @@ class TelegramChatHandler:
                         thread_id=thread_id,
                         context=context,
                     )
-                    if messages["chats"]:
-                        msg = messages["chats"][-1]
+                    if messages[TelegramBotServiceResponse.CHATS]:
+                        msg = messages[TelegramBotServiceResponse.CHATS][-1]
                         await self.hass.services.async_call(
                             TELEGRAM_DOMAIN,
-                            SERVICE_EDIT_REPLYMARKUP,
+                            TelegramBotService.EDIT_REPLYMARKUP,
                             {
-                                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                                CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
                                 **get_telegram_service_target(
-                                    msg[ATTR_CHAT_ID],
+                                    msg[TelegramBotServiceResponse.CHAT_ID],
                                     self.notify_entity_id,
                                 ),
-                                ATTR_MESSAGE_ID: msg[ATTR_MESSAGE_ID],
-                                ATTR_KEYBOARD_INLINE: [
+                                TelegramBotServiceArgument.MESSAGE_ID: msg[
+                                    TelegramBotServiceResponse.MESSAGE_ID
+                                ],
+                                TelegramBotServiceArgument.INLINE_KEYBOARD: [
                                     [(agent_name, f"/model {agent_id}")]
                                     for agent_id, agent_name in agents.items()
                                 ],
@@ -1502,48 +1490,57 @@ class TelegramChatHandler:
 
     async def async_handle_command(self, event: Event) -> None:
         """Handle command events."""
-        context = self._get_context(event.context, event.data.get(ATTR_USER_ID))
+        context = self._get_context(
+            event.context, event.data.get(TelegramBotEventData.USER_ID)
+        )
         await self.async_process_command(
-            event.data.get(ATTR_MESSAGE_THREAD_ID) or 0,
-            event.data["command"].split("@")[0],
-            event.data.get("args", []),
+            event.data.get(TelegramBotEventData.MESSAGE_THREAD_ID) or 0,
+            event.data[TelegramBotEventData.COMMAND].split("@")[0],
+            event.data.get(TelegramBotEventData.ARGS, []),
             context,
         )
 
     async def async_handle_callback(self, event: Event) -> None:
         """Handle callback query events."""
         LOGGER.debug("callback_event data: %s", event.data)
-        context = self._get_context(event.context, event.data.get(ATTR_USER_ID))
-        args = event.data.get("data", "").split(" ")
+        context = self._get_context(
+            event.context, event.data.get(TelegramBotEventData.USER_ID)
+        )
+        args = event.data.get(TelegramBotEventData.DATA, "").split(" ")
 
         await self.async_process_command(
-            event.data.get(ATTR_MESSAGE, {}).get(ATTR_MESSAGE_THREAD_ID) or 0,
+            event.data.get(TelegramBotEventData.MESSAGE, {}).get("message_thread_id")
+            or 0,
             args.pop(0),
             args,
             context,
         )
         await self.hass.services.async_call(
             TELEGRAM_DOMAIN,
-            SERVICE_ANSWER_CALLBACK_QUERY,
+            TelegramBotService.ANSWER_CALLBACK_QUERY,
             {
-                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                ATTR_MESSAGE: "Done",
-                ATTR_CALLBACK_QUERY_ID: event.data.get(ATTR_MSGID),
+                CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
+                TelegramBotServiceArgument.MESSAGE: "Done",
+                TelegramBotServiceArgument.CALLBACK_QUERY_ID: event.data.get(
+                    TelegramBotEventData.ID
+                ),
             },
             context=context,
         )
-        if event.data[ATTR_MSG]:
+        if event.data[TelegramBotEventData.MESSAGE]:
             await self.hass.services.async_call(
                 TELEGRAM_DOMAIN,
-                SERVICE_EDIT_REPLYMARKUP,
+                TelegramBotService.EDIT_REPLYMARKUP,
                 {
-                    CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                    CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
                     **get_telegram_service_target(
                         self.chat_id,
                         self.notify_entity_id,
                     ),
-                    ATTR_MESSAGE_ID: event.data[ATTR_MSG][ATTR_MESSAGE_ID],
-                    ATTR_KEYBOARD_INLINE: [],
+                    TelegramBotServiceArgument.MESSAGE_ID: event.data[
+                        TelegramBotEventData.MESSAGE
+                    ]["message_id"],
+                    TelegramBotServiceArgument.INLINE_KEYBOARD: [],
                 },
                 context=context,
             )
@@ -1554,13 +1551,13 @@ class TelegramChatHandler:
         """Handle service call events."""
         LOGGER.debug("Service call event: %s, data: %s", service, service_data)
 
-        thread_id = service_data.get(ATTR_MESSAGE_THREAD_ID) or 0
+        thread_id = service_data.get(TelegramBotServiceArgument.MESSAGE_THREAD_ID) or 0
         conversation_id = self._get_conversation_id(thread_id)
 
         def add_external_message(_: asyncio.Task[None] | None) -> None:
             """Add messages sent from outside of the integration to the chat log."""
-            title = service_data.get(ATTR_TITLE)
-            message = service_data.get(ATTR_MESSAGE, "")
+            title = service_data.get(TelegramBotServiceArgument.TITLE)
+            message = service_data.get(TelegramBotServiceArgument.MESSAGE, "")
             # A notification does not act for the user who owns the conversation.
             with (
                 async_get_chat_session(
@@ -1595,21 +1592,23 @@ class TelegramChatHandler:
     ) -> str:
         """Handle the generate image intent."""
         LOGGER.debug("generate_image_intent event data: %s", event.data)
-        context = self._get_context(context, event.data.get(ATTR_USER_ID))
+        context = self._get_context(
+            context, event.data.get(TelegramBotEventData.USER_ID)
+        )
 
-        thread_id = event.data.get(ATTR_MESSAGE_THREAD_ID) or 0
+        thread_id = event.data.get(TelegramBotEventData.MESSAGE_THREAD_ID) or 0
 
         await self.hass.services.async_call(
             TELEGRAM_DOMAIN,
-            SERVICE_SEND_CHAT_ACTION,
+            TelegramBotService.SEND_CHAT_ACTION,
             {
-                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
+                CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
                 **get_telegram_service_target(
                     self.chat_id,
                     self.notify_entity_id,
                 ),
-                ATTR_MESSAGE_THREAD_ID: thread_id,
-                ATTR_CHAT_ACTION: CHAT_ACTION_UPLOAD_PHOTO,
+                TelegramBotServiceArgument.MESSAGE_THREAD_ID: thread_id,
+                TelegramBotServiceArgument.CHAT_ACTION: TelegramBotChatAction.UPLOAD_PHOTO,
             },
             context=context,
         )
@@ -1626,14 +1625,14 @@ class TelegramChatHandler:
 
         await self.hass.services.async_call(
             TELEGRAM_DOMAIN,
-            SERVICE_SEND_PHOTO,
+            TelegramBotService.SEND_PHOTO,
             {
-                ATTR_FILE: media.path.as_posix(),  # type: ignore[union-attr]
+                TelegramBotServiceArgument.FILE: media.path.as_posix(),  # type: ignore[union-attr]
                 **get_telegram_service_target(self.chat_id, self.notify_entity_id),
-                ATTR_MESSAGE_THREAD_ID: thread_id,
-                CONF_CONFIG_ENTRY_ID: self.telegram_entry_id,
-                ATTR_PARSER: "markdownv2",
-                ATTR_MESSAGE_TAG: DOMAIN,
+                TelegramBotServiceArgument.MESSAGE_THREAD_ID: thread_id,
+                CommonServiceArgument.CONFIG_ENTRY_ID: self.telegram_entry_id,
+                TelegramBotServiceArgument.PARSE_MODE: TelegramBotParseMode.MARKDOWN_V2,
+                TelegramBotServiceArgument.MESSAGE_TAG: DOMAIN,
             },
             blocking=True,
             context=context,

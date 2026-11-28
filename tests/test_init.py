@@ -31,22 +31,19 @@ from homeassistant.components.conversation import (
 )
 from homeassistant.components.conversation.chat_log import DATA_CHAT_LOGS
 from homeassistant.components.telegram_bot.const import (
-    ATTR_CHAT_ID,
-    ATTR_MESSAGE,
-    ATTR_MESSAGE_TAG,
-    ATTR_MESSAGE_THREAD_ID,
     CONF_CHAT_ID,
-    CONF_CONFIG_ENTRY_ID,
     DOMAIN as TELEGRAM_DOMAIN,
-    SERVICE_SEND_MESSAGE,
+    TelegramBotService,
+    TelegramBotServiceArgument,
+    TelegramBotServiceResponse,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_DOMAIN,
-    ATTR_ENTITY_ID,
     ATTR_SERVICE,
     ATTR_SERVICE_DATA,
     EVENT_CALL_SERVICE,
+    CommonServiceArgument,
 )
 from homeassistant.core import Context, Event, HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -118,8 +115,8 @@ async def test_send_message_uses_notify_entity_id(
     calls = async_mock_service(
         hass,
         TELEGRAM_DOMAIN,
-        SERVICE_SEND_MESSAGE,
-        response={"chats": []},
+        TelegramBotService.SEND_MESSAGE,
+        response={TelegramBotServiceResponse.CHATS: []},
     )
 
     await chat_handler.send_message(message="Hello", thread_id=0, context=Context())
@@ -127,12 +124,15 @@ async def test_send_message_uses_notify_entity_id(
     assert len(calls) == 1
     call = calls[0]
     assert call.domain == TELEGRAM_DOMAIN
-    assert call.service == SERVICE_SEND_MESSAGE
-    assert call.data[ATTR_MESSAGE] == "Hello"
-    assert call.data[ATTR_ENTITY_ID] == [chat_handler.notify_entity_id]
-    assert ATTR_CHAT_ID not in call.data
-    assert call.data[ATTR_MESSAGE_THREAD_ID] == 0
-    assert call.data[CONF_CONFIG_ENTRY_ID] == mock_telegram_config_entry.entry_id
+    assert call.service == TelegramBotService.SEND_MESSAGE
+    assert call.data[TelegramBotServiceArgument.MESSAGE] == "Hello"
+    assert call.data[CommonServiceArgument.ENTITY_ID] == [chat_handler.notify_entity_id]
+    assert TelegramBotServiceArgument.CHAT_ID not in call.data
+    assert call.data[TelegramBotServiceArgument.MESSAGE_THREAD_ID] == 0
+    assert (
+        call.data[CommonServiceArgument.CONFIG_ENTRY_ID]
+        == mock_telegram_config_entry.entry_id
+    )
 
 
 async def test_new_command_clears_history_immediately(
@@ -199,11 +199,11 @@ async def test_manual_send_message_service_call_adds_assistant_history_entry(
         EVENT_CALL_SERVICE,
         {
             ATTR_DOMAIN: TELEGRAM_DOMAIN,
-            ATTR_SERVICE: SERVICE_SEND_MESSAGE,
+            ATTR_SERVICE: TelegramBotService.SEND_MESSAGE,
             ATTR_SERVICE_DATA: {
-                ATTR_CHAT_ID: chat_id,
-                ATTR_MESSAGE: "Manual message",
-                ATTR_MESSAGE_THREAD_ID: thread_id,
+                TelegramBotServiceArgument.CHAT_ID: chat_id,
+                TelegramBotServiceArgument.MESSAGE: "Manual message",
+                TelegramBotServiceArgument.MESSAGE_THREAD_ID: thread_id,
             },
         },
         context=Context(),
@@ -240,12 +240,12 @@ async def test_tagged_send_message_service_call_does_not_add_history_entry(
         EVENT_CALL_SERVICE,
         {
             ATTR_DOMAIN: TELEGRAM_DOMAIN,
-            ATTR_SERVICE: SERVICE_SEND_MESSAGE,
+            ATTR_SERVICE: TelegramBotService.SEND_MESSAGE,
             ATTR_SERVICE_DATA: {
-                ATTR_CHAT_ID: chat_id,
-                ATTR_MESSAGE: "Integration message",
-                ATTR_MESSAGE_TAG: DOMAIN,
-                ATTR_MESSAGE_THREAD_ID: thread_id,
+                TelegramBotServiceArgument.CHAT_ID: chat_id,
+                TelegramBotServiceArgument.MESSAGE: "Integration message",
+                TelegramBotServiceArgument.MESSAGE_TAG: DOMAIN,
+                TelegramBotServiceArgument.MESSAGE_THREAD_ID: thread_id,
             },
         },
         context=Context(),

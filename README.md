@@ -9,7 +9,7 @@ This is a Home Assistant custom integration that allows you to use the [Telegram
 
 ## Requirements
 
-- Home Assistant 2026.11 or later
+- Home Assistant 2026.12 or later
 - Telegram Bot integration set up and working
 - Any conversation AI integration is recommended, however the NLP Assist works too.
 
