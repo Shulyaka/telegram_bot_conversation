@@ -222,6 +222,9 @@ class TelegramBotConversationHandler:
         self, conversation_id: str, event_type: ChatLogEventType, data: dict[str, Any]
     ) -> None:
         """Handle conversation chat log events."""
+        if event_type != ChatLogEventType.CONTENT_ADDED:
+            return
+
         parts = conversation_id.split("_")
         if len(parts) < 2 or parts[0] != "telegram":
             return
@@ -242,18 +245,6 @@ class TelegramBotConversationHandler:
                 chat_id,
                 thread_id,
             )
-            return
-
-        if (
-            event_type == ChatLogEventType.CONTENT_ADDED
-            and (conversation := handler.conversations.get(thread_id))
-            and conversation.streamed_content is not None
-            and (content := data.get("content"))
-            and content.get("role") == "assistant"
-            and content.get("content") == conversation.streamed_content
-        ):
-            # Streamed content is committed by the delta listener.
-            conversation.streamed_content = None
             return
 
         def log_exceptions(task: Task[None]) -> None:
