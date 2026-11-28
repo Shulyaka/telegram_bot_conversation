@@ -371,18 +371,19 @@ class TelegramChatHandler:
             current_conversation.draft_cancel()
         current_conversation.draft_cancel = None
 
+        current_draft = current_conversation.draft
         if draft:
             message = (
                 (
-                    current_conversation.draft["content"]
+                    current_draft["content"]
                     or (
-                        current_conversation.draft["thinking_content"]
+                        current_draft["thinking_content"]
                         if self.config[CONF_THOUGHTS]
                         else ""
                     )
                     or ""
                 )
-                if current_conversation.draft
+                if current_draft
                 else ""
             )
 
@@ -420,6 +421,13 @@ class TelegramChatHandler:
 
         try:
             async with current_conversation.send_lock:
+                if draft and (
+                    current_draft is None
+                    or current_conversation.draft is not current_draft
+                ):
+                    # Formatting or a previous send may outlive this response.
+                    return messages
+
                 if (
                     not draft
                     and current_conversation.sent_drafts is not None
@@ -1160,20 +1168,23 @@ class TelegramChatHandler:
         async with current_conversation.delta_lock:
             LOGGER.debug("Chat log delta: %s", delta)
             if "role" in delta:
-                if current_conversation.draft:
+                current_draft = current_conversation.draft
+                # Retire it before sending so queued updates cannot resend it.
+                current_conversation.draft = None
+                if current_draft:
                     if (
                         (
-                            current_conversation.draft["content"]
-                            or current_conversation.draft["thinking_content"]
-                            or current_conversation.draft["tool_calls"]
+                            current_draft["content"]
+                            or current_draft["thinking_content"]
+                            or current_draft["tool_calls"]
                         )
                         and (
                             delta["role"]
                             or (  # for last content, only commit if it exists in the chat log
                                 chat_log.content[-1].role == "assistant"
-                                and current_conversation.draft["content"]
+                                and current_draft["content"]
                                 and (chat_log.content[-1].content or "").endswith(
-                                    current_conversation.draft["content"]
+                                    current_draft["content"]
                                 )  # endswith is to cater for a possible reaction
                             )
                         )
@@ -1182,7 +1193,7 @@ class TelegramChatHandler:
                             await self.async_handle_chat_log_event(
                                 thread_id=thread_id,
                                 event_type=ChatLogEventType.CONTENT_ADDED,
-                                data={"content": current_conversation.draft},
+                                data={"content": current_draft},
                                 context=context,
                             )
                         except HomeAssistantError as err:
